@@ -100,6 +100,8 @@ Order inside a milestone: review → build → explain + LEARN.md → Postman fo
   `.resources/definition.yaml` per folder (holds `order` and `description`). Write requests in this
   format directly. Never hand the user a v2.1 JSON to import — the importer drops GraphQL queries.
 - GraphQL body: `body: { type: graphql, content: { query: |- ... } }`.
+- File upload (REST): `body: { type: formdata, content: [{ key: file, type: file, src: fixtures/<file> }] }`;
+  `src` is relative to `postman/`, fixtures live in `postman/fixtures/`.
 - Never declare `data`, `tests`, `environment`, `globals`, `request`, `iteration` or `responseBody`
   at the top of a script — they are legacy Postman sandbox globals and the script fails with
   "Identifier has already been declared". Use `gql` for `body.data`.

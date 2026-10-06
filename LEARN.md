@@ -552,3 +552,208 @@ at compile time — so the check was a booted server, not just `tsc`.
 3. `AuthService` needs member data but must not import `MemberModule`. How, and why not?
 4. Five copies of two lines — why not leave them? What had already gone wrong?
 5. Typecheck passed after the refactor. Why was that not enough to call it done?
+
+---
+
+## M2 — Clinic
+
+### 1. A status field is a state machine — enforce it in the write, not in an `if`
+
+```
+PENDING ──► ACTIVE | CHANGES_REQUESTED | REJECTED     (admin)
+CHANGES_REQUESTED ──► PENDING                         (clinic resubmits)
+ACTIVE ◄──► SUSPENDED                                 (admin)
+```
+
+The naive version reads, checks, writes:
+
+```ts
+const clinic = await this.clinicModel.findById(id);
+if (clinic.clinicStatus !== 'PENDING') throw ...;   // two admins both pass this line
+await this.clinicModel.updateOne({ _id: id }, { clinicStatus: 'ACTIVE' });
+```
+
+Two admins clicking at the same moment both read PENDING, both write, and the audit log gets
+two decisions. The fix is to put the expected state **into the filter**:
+
+```ts
+findOneAndUpdate({ _id, clinicStatus: 'PENDING' }, { $set: { clinicStatus: 'ACTIVE' } })
+```
+
+MongoDB matches and modifies one document atomically, so only one request finds a PENDING row;
+the other gets `null` and is told "not allowed in the current status". This is the same pattern as
+the refresh-token rotation in M1 and the slot hold in M5.
+
+The approval rule (at least one photo and one language) goes into the same filter —
+`'clinicImages.0': { $exists: true }` — so the check and the write cannot drift apart either.
+When the update matches nothing, one extra read explains why (missing / wrong status / incomplete).
+
+The same idea protects the clinic's own edits: `updateMyClinic` reads the status, decides which
+fields are locked, and writes with `{ _id, clinicStatus: <what it read> }`. If an admin approves
+the clinic in between, the write matches nothing — otherwise a PENDING-time rename would land on a
+just-verified clinic. The name for this bug class is **TOCTOU** (time of check to time of use).
+
+### 2. The first transaction: account and clinic together
+
+`signupClinic` creates a `members` row (AGENT) and a `clinics` row. Without a transaction, a crash
+or a validation error between the two inserts leaves an AGENT account with no clinic: it can log
+in, owns nothing, and its email can never register again. That is why the generic `signup` no
+longer accepts AGENT at all.
+
+```ts
+const session = await this.connection.startSession();
+await session.withTransaction(async () => {
+	member = await this.memberService.createEmailMember({ ... }, session);
+	await this.clinicModel.create([{ ...clinic, memberId: member._id }], { session });
+});
+```
+
+- `create([...], { session })` — the array form is required to pass options.
+- `withTransaction` **retries** the callback on transient errors (an election, a write conflict),
+  so the callback must be safe to run twice. It only inserts; nothing outside the database
+  happens inside it.
+- The refresh cookie is set **after** the commit, never for an account that was rolled back.
+- Transactions need a replica set. Atlas always is one — the reason Atlas was chosen in M0.
+
+### 3. Caching the clinic pages
+
+| Key | TTL | Dropped when |
+| --- | --- | --- |
+| `clinic:detail:<id>` | 60 s | the clinic edits its profile, any admin decision, a like, a follow |
+| `clinic:list:<sha1(input)>` | 60 s | any clinic edit or admin decision (`SCAN clinic:list:*`) |
+
+**What is never cached: `meLiked`, `meFollowed`.** They differ per viewer. Cached, the first
+patient's red heart would be shown to everyone after them. They are added after the cache read.
+
+**Views are not invalidated.** Every first visit bumps `clinicViews`; dropping the cache on each
+would make the cache useless on exactly the popular pages. A view count 60 s behind is fine.
+
+**Stampede — single-flight.** When a hot key expires, every request that arrives before the first
+one finishes rebuilding sees an empty key and goes to MongoDB. `wrap()` now lets only one rebuild:
+
+```
+SET lock:clinic:list:<hash> 1 NX PX 3000
+     NX = set only if the key does Not eXist   → exactly one request gets "OK"
+     PX = expire after 3000 milliseconds       → a crashed holder blocks nobody for long
+```
+
+The winner loads and stores; the others poll the cache every 50 ms for up to 1 s, then fall back
+to a direct read (slower, never broken). Measured with `redis-cli MONITOR` and 50 identical
+requests at once: **50 lock attempts, 1 cache write** — MongoDB ran the aggregation once.
+
+**Penetration.** A request for an id that does not exist always misses, because "not found" was
+never stored. `wrap()` now stores a `__miss__` sentinel for 30 s. And an id that is not even a
+valid ObjectId is answered before it reaches Redis or MongoDB.
+
+### 4. Counters under concurrency
+
+**Like.** Nestar read first, then inserted or deleted. Two clicks arriving together both read
+"not liked", both insert, the counter goes up twice. Now the write decides:
+
+```ts
+const { deletedCount } = await likeModel.deleteOne({ memberId, likeRefId });
+if (deletedCount) return -1;                     // it existed: unliked
+try { await likeModel.create(...); return 1; }   // first insert wins
+catch (e) { if (e.code === 11000) return 0; }    // the unique index refused the twin
+```
+
+**View.** One `updateOne(..., { upsert: true })`. `upsertedCount === 1` means a first visit
+(counter +1); otherwise only `updatedAt` moves, which puts the clinic back on top of Recently
+Visited. Two tabs opening at once cannot both be "first": the unique index refuses one.
+
+**Counters move only through `$inc`.** `{ $inc: { clinicLikes: 1 } }` is applied inside the
+document lock; reading the number, adding one in Node and writing it back loses updates.
+
+What is still not atomic: the follow row and the `clinicFollowers` `$inc` are two writes. A crash
+between them drifts the counter by one. A transaction would fix it at the cost of latency on
+every follow; the M9 batch can recount instead. Accepted, written down.
+
+### 5. The `follows` index, measured
+
+"My Followings" asks: `find({ followerId }).sort({ createdAt: -1 })`. Nestar had only
+`{ followingId: 1, followerId: 1 }`. An index is used from its **left prefix**: a query on
+`followerId` alone cannot enter an index that starts with `followingId`.
+
+`explain('executionStats')` on 20 000 follows, before and after adding `{ followerId: 1, createdAt: -1 }`:
+
+| Index | Plan | Docs examined | Returned |
+| --- | --- | --- | --- |
+| Nestar `{ followingId, followerId }` | `COLLSCAN → SORT` (in memory) | 20 000 | 10 |
+| + `{ followerId, createdAt: -1 }` | `IXSCAN → FETCH → LIMIT` | 10 | 10 |
+
+The index order follows the **ESR rule**: **E**quality fields first, then **S**ort, then
+**R**ange. `followerId` (equality) then `createdAt` (sort): the index hands rows over already
+ordered, so there is no in-memory sort and `LIMIT 10` stops after 10 keys.
+
+Two more details from the same query:
+
+- **`$sort` before `$facet`.** A `$facet` sub-pipeline never uses an index. Sorting inside it would
+  sort every follow of the member in memory; sorting before it lets the index do it.
+- **`followingType` is copied onto the follow** (USER / DOCTOR / AGENT). Tabs and their badges
+  ("Clinics (4) Doctors (6)") come from one `$group` without a `$lookup` into `members`.
+  Denormalising is safe here because a member's type never changes — the copy cannot go stale.
+
+### 6. Image upload, and three ways it goes wrong
+
+Uploads moved from GraphQL to a REST endpoint, `POST /upload/image?target=clinic`:
+
+1. **A vulnerable parser.** Nestar used `graphql-upload@13`. Its multipart parser `dicer` can be
+   crashed by one malformed request (GHSA-wm7h-9275-46v2), and the middleware runs **before** any
+   guard — anyone could take the API down. The fixed version is ESM-only. Multer already ships
+   with `@nestjs/platform-express`, and an interceptor runs **after** the guard: an anonymous
+   request never reaches the parser. No package was added.
+2. **Path traversal.** Nestar wrote to `uploads/${target}` with `target` from the client;
+   `target=../../dist` writes outside the folder. Now `target` must be a key of a fixed map, which
+   also says who may upload there (only AGENT into `clinic`).
+3. **Trusting the name.** The file name and `Content-Type` are whatever the client says. The type
+   is read from the first bytes (`FF D8 FF` = JPEG, `89 50 4E 47 …` = PNG), and the server picks
+   the name (`randomUUID()`), so a script renamed `photo.png` is refused.
+
+And on the way back in: `clinicImages` accepts only paths of the form
+`uploads/<folder>/<uuid>.(jpg|png)`. An outside URL in a clinic photo would let any clinic put a
+tracking pixel — or a `javascript:` link — on every patient's screen.
+
+### 7. Search: Atlas Search with a regex fallback
+
+`$regex` with a leading wildcard cannot use an index, has no relevance order, no typo tolerance
+and no Korean word splitting. Atlas Search (Lucene inside Atlas) has all of them, and needs no
+second system to keep in sync — the reason it was chosen over Elasticsearch.
+
+The index definition lives in `docs/atlas-search/clinics.json` (`lucene.nori` is the Korean
+analyzer). It is created once in Atlas; `ATLAS_SEARCH_INDEX` names it. Empty, the service falls
+back to an escaped regex on the two names, so local runs and the Postman suite work either way.
+`$search` must be the first stage and already returns the best match first, so no `$sort` is
+added unless the user asked for one. One caveat: the search index is updated a moment after the
+write (eventual consistency), so a clinic approved a second ago may not be searchable yet.
+
+### 8. Smaller things
+
+- **`NotFoundException` showed up as `INTERNAL_SERVER_ERROR`.** `@nestjs/apollo` maps only 400,
+  401, 403 and 422 to GraphQL codes. `formatError` now maps 404 to `NOT_FOUND`, so a client can
+  tell "this does not exist" from "the server broke".
+- **Public member data.** A follow list shows `PublicMember` (id, type, display name, image),
+  never `Member`, which carries email and phone. Patients show as "Feride K.".
+- **Audit log from the first decision.** Append-only `auditLogs`: the service has `record` and
+  `get`, no update or delete. Refused attempts are not logged — only decisions that happened.
+- **2dsphere and missing pins.** The GeoJSON sub-schema has no defaults: a half-built
+  `{ type: 'Point' }` without coordinates makes the 2dsphere index reject the whole document.
+  A clinic without a pin is simply skipped by the index.
+- **The Postman `data` trap, again.** Six test scripts declared `const data` and failed with
+  "Identifier 'data' has already been declared" — exactly the rule in `CLAUDE.md`.
+
+### Interview questions
+
+1. Two admins approve the same clinic at the same moment. How does your code make sure only one
+   decision is recorded — without a lock?
+2. What is TOCTOU? Show where it appeared in `updateMyClinic` and how the filter fixes it.
+3. Why does clinic signup need a transaction, and why must the transaction callback be idempotent?
+4. A hot cache key expires and 500 requests arrive. Explain single-flight with `SET NX PX`. What
+   happens if the request holding the lock crashes?
+5. Why are `meLiked` / `meFollowed` not cached, and why are view counts allowed to be stale?
+6. Nestar's like toggle reads first and then writes. What goes wrong under double clicks, and how
+   does a unique index fix it?
+7. An index `{ followingId, followerId }` exists, yet the query on `followerId` does a COLLSCAN.
+   Why? What is the ESR rule?
+8. Why does a `$sort` placed inside `$facet` hurt, while the same `$sort` before it is free?
+9. Name three ways a file upload endpoint can be attacked, and the defence for each.
+10. When is copying a field into another collection (denormalising) safe?
