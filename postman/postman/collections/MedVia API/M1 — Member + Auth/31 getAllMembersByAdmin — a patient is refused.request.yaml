@@ -1,0 +1,30 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{secondToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query Members($input: MembersInquiry!) {
+        getAllMembersByAdmin(input: $input) { list { _id } metaCounter { total } }
+      }
+    variables: |-
+      {
+        "input": {
+          "page": 1,
+          "limit": 10
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      pm.test('refused: Allowed only for members with specific roles!', () => pm.expect(msg).to.eql('Allowed only for members with specific roles!'));
+    language: text/javascript
+order: 31000

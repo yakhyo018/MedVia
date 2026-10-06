@@ -1,0 +1,23 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{secondOldToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query GetMyProfile {
+        getMyProfile { _id memberType memberEmail memberFullName memberNotify { bookingUpdates visitReminders chatMessages } }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      pm.test('refused: You are not authenticated, login first!', () => pm.expect(msg).to.eql('You are not authenticated, login first!'));
+    language: text/javascript
+order: 27000

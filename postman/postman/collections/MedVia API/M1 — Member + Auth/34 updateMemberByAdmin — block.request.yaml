@@ -1,0 +1,31 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation UpdateMemberByAdmin($input: MemberAdminUpdate!) {
+        updateMemberByAdmin(input: $input) { _id memberEmail memberStatus deletedAt }
+      }
+    variables: |-
+      {
+        "input": {
+          "_id": "{{blockMemberId}}",
+          "memberStatus": "BLOCK"
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('status BLOCK', () => pm.expect((gql.updateMemberByAdmin || {}).memberStatus).to.eql('BLOCK'));
+    language: text/javascript
+order: 34000

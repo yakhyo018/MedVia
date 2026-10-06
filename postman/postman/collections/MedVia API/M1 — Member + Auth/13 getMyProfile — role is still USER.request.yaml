@@ -1,0 +1,24 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query GetMyProfile {
+        getMyProfile { _id memberType memberEmail memberFullName memberNotify { bookingUpdates visitReminders chatMessages } }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('role unchanged', () => pm.expect((gql.getMyProfile || {}).memberType).to.eql('USER'));
+    language: text/javascript
+order: 13000

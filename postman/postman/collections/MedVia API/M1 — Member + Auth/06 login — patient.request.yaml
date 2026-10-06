@@ -1,0 +1,35 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation Login($input: LoginInput!) {
+        login(input: $input) { _id memberType memberEmail memberLastLoginAt accessToken }
+      }
+    variables: |-
+      {
+        "input": {
+          "memberEmail": "{{patientEmail}}",
+          "memberPassword": "{{patientPassword}}"
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const m = gql.login || {};
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('same account', () => pm.expect(m.memberEmail).to.eql(pm.environment.get('patientEmail').toLowerCase()));
+      pm.test('last login time recorded', () => pm.expect(Date.parse(m.memberLastLoginAt)).to.not.be.NaN);
+      pm.test('refresh cookie set', () => pm.expect(pm.cookies.has('medvia_rt')).to.be.true);
+      pm.environment.set('patientToken', m.accessToken || '');
+      pm.environment.set('rtFirst', pm.cookies.get('medvia_rt') || '');
+    language: text/javascript
+order: 6000

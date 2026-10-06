@@ -1,0 +1,48 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation Signup($input: MemberInput!) {
+        signup(input: $input) {
+          _id
+          memberType
+          memberAuthType
+          memberEmail
+          memberFullName
+          memberLang
+          memberMustChangePassword
+          memberNotify { bookingUpdates visitReminders chatMessages }
+          memberTermsAt
+          accessToken
+        }
+      }
+    variables: |-
+      {
+        "input": {
+          "memberType": "AGENT",
+          "memberEmail": "{{clinicEmail}}",
+          "memberPassword": "{{patientPassword}}",
+          "memberFullName": "Kim Ji-won",
+          "memberLang": "KO",
+          "termsAccepted": true
+        }
+      }
+scripts:
+  - type: beforeRequest
+    code: pm.environment.set('clinicEmail', 'clinic.' + Date.now() + '@medvia.test');
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('role AGENT', () => pm.expect((gql.signup || {}).memberType).to.eql('AGENT'));
+    language: text/javascript
+order: 39000
