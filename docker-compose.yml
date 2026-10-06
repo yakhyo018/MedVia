@@ -1,0 +1,15 @@
+# Local Redis only. MongoDB lives in Atlas, so it is not a service here.
+# Without Docker:  brew install redis && brew services start redis
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: medvia-redis
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - medvia-redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  medvia-redis-data:

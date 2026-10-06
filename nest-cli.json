@@ -1,0 +1,28 @@
+{
+	"$schema": "https://json.schemastore.org/nest-cli",
+	"collection": "@nestjs/schematics",
+	"sourceRoot": "apps/medvia-api/src",
+	"monorepo": true,
+	"root": "apps/medvia-api",
+	"compilerOptions": {
+		"deleteOutDir": true,
+		"webpack": true,
+		"tsConfigPath": "apps/medvia-api/tsconfig.app.json"
+	},
+	"projects": {
+		"medvia-api": {
+			"type": "application",
+			"root": "apps/medvia-api",
+			"entryFile": "main",
+			"sourceRoot": "apps/medvia-api/src",
+			"compilerOptions": { "tsConfigPath": "apps/medvia-api/tsconfig.app.json" }
+		},
+		"medvia-batch": {
+			"type": "application",
+			"root": "apps/medvia-batch",
+			"entryFile": "main",
+			"sourceRoot": "apps/medvia-batch/src",
+			"compilerOptions": { "tsConfigPath": "apps/medvia-batch/tsconfig.app.json" }
+		}
+	}
+}
