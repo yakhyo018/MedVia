@@ -6,6 +6,8 @@ Portfolio project: no SMS, no outgoing email, no payments, no HIRA.
 
 ## Read first
 
+- **`docs/STATUS.md` — at the start of every session.** Where the project stands, the next step,
+  open items, how we work. Update it whenever a milestone closes.
 - `LEARN.md` — why each mechanism exists, trade-offs, interview Q&A. Update after every module.
 - `docs/DECISIONS.md` — Decision / Why / Risks / Alternatives.
 
