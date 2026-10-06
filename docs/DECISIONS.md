@@ -18,3 +18,12 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | `tseslint.configs.recommended`, not `recommendedTypeChecked`. | Type-aware linting needs a project service wired to every file and is slow; it can be switched on once the codebase is larger. | Some type-related smells go uncaught for now. | Enable type-checked rules immediately. |
 | GraphQL code-first (`autoSchemaFile`). | The resolvers are the single source of truth for the contract; schema-first needs codegen to stay in sync. | The SDL only exists after a successful boot. | Schema-first `.graphql` files plus codegen. |
 | `@Global()` on `RedisModule`. | Cache and Redis are cross-cutting and would otherwise appear in almost every module's imports. | Global modules hide dependencies; used only here. | Import `RedisModule` explicitly in each module that caches. |
+
+## M0.1 — Redis and shutdown fixes
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| `invalidate()` uses a `SCAN` cursor loop, not `KEYS`. | Redis executes commands on one thread; `KEYS` walks the whole keyspace in one call and blocks every other client. | A pattern invalidation now takes several round trips. | Tag sets (track a key list per entity); key versioning (bump a prefix instead of deleting). |
+| `UNLINK` instead of `DEL`. | Memory is reclaimed on a background thread, so a large delete does not stall the main thread. | None meaningful on Redis ≥ 4. | `DEL`. |
+| `app.enableShutdownHooks()` in both apps. | Nest ignores SIGTERM / SIGINT unless enabled, so `onModuleDestroy` never ran and connections were cut instead of closed. | Slightly slower shutdown while hooks run. | Handle signals manually in `main.ts`. |
+| Global `ValidationPipe` keeps `whitelist: true`; rule written into CLAUDE.md. | Unknown input fields are stripped, so a client cannot smuggle `memberType: ADMIN` into a profile update. | Any input field without a class-validator decorator disappears silently. | `forbidNonWhitelisted: true` (reject instead of strip); no whitelist, as in Nestar. |

@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from './redis.service';
 
+/** Keys examined per SCAN round trip. A hint to Redis, not a hard limit. */
+const SCAN_BATCH = 100;
+
 /**
  * Read-through cache over Redis.
  *
@@ -42,12 +45,30 @@ export class CacheService {
 		return fresh;
 	}
 
-	/** Drops every key under a prefix, e.g. `clinic:list:*` after a clinic changes. */
+	/**
+	 * Drops every key under a prefix, e.g. `clinic:list:*` after a clinic changes.
+	 *
+	 * SCAN, not KEYS: Redis runs commands on one thread, and KEYS walks the whole
+	 * keyspace in a single call, blocking every other client until it finishes.
+	 * SCAN returns a cursor and a small batch, so other commands run in between.
+	 * UNLINK, not DEL: the memory is freed on a background thread.
+	 */
 	public async invalidate(pattern: string): Promise<number> {
 		try {
-			const keys = await this.redisService.redis.keys(pattern);
-			if (keys.length === 0) return 0;
-			return await this.redisService.redis.del(...keys);
+			let cursor = '0';
+			let removed = 0;
+			do {
+				const [next, keys] = await this.redisService.redis.scan(
+					cursor,
+					'MATCH',
+					pattern,
+					'COUNT',
+					SCAN_BATCH,
+				);
+				cursor = next;
+				if (keys.length > 0) removed += await this.redisService.redis.unlink(...keys);
+			} while (cursor !== '0');
+			return removed;
 		} catch (err: any) {
 			this.logger.warn(`cache invalidate failed for ${pattern}: ${err.message}`);
 			return 0;

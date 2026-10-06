@@ -35,6 +35,21 @@ After porting any file: `rg -n "nestar|Nestar|property|Property" <file>` must re
 - The slot lock lives in MongoDB (atomic `findOneAndUpdate`).
   Redis is cache and queue only — never a second source of truth.
 
+## DTO rules
+
+- Every `@InputType()` field needs at least one class-validator decorator — `@IsOptional()` at
+  minimum. The global `ValidationPipe` runs with `whitelist: true`, which silently strips any
+  field that carries only `@Field()`: no error, no warning, the value is simply gone.
+- Nestar ran without `whitelist`, so every DTO ported from it must be checked field by field.
+- Fields set by the server after validation (`memberId = authMember._id`) need no decorator —
+  the pipe has already run when they are assigned.
+
+## Redis rules
+
+- Never `KEYS` — it blocks the single Redis thread for the whole keyspace. Use `SCAN` with a cursor.
+- `UNLINK` over `DEL` for bulk removal; memory is freed on a background thread.
+- Every cache key gets a TTL. Key format: `<entity>:<scope>:<id-or-hash>`, e.g. `clinic:detail:<id>`.
+
 ## Workflow
 
 1. Plan before editing. For anything non-trivial, show the plan and wait for a yes.

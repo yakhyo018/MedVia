@@ -152,3 +152,188 @@ agree from the first commit — Nestar has none, which is why its baseline carri
 5. `WithoutGuard` lets unauthenticated requests through. How is that different from no guard at all?
 6. The health query reports `degraded` instead of throwing when Redis is down. Why is that the right
    behaviour for a cache and the wrong behaviour for a database?
+
+---
+
+## M0.1 — Redis and DI from first principles
+
+### 1. Why a cache exists at all
+
+The clinic list page runs an aggregation: `$match` on status, `$lookup` into members, `$sort`,
+`$facet` for the page and the total. Every visitor triggers it again, although the result changes
+only when a clinic edits its profile — a few times a day.
+
+The cost is not "the disk is slow". MongoDB keeps hot data in RAM too (the WiredTiger cache). The
+cost is **recomputing the same answer**: parse the pipeline, walk the index, join, sort, serialise —
+on every request. A cache stores the *finished answer* and hands it back.
+
+Rough orders of magnitude (the ratios matter, not the exact numbers):
+
+| Operation | Time |
+| --- | --- |
+| Read from RAM | ~100 ns |
+| Round trip to a server in the same data centre | ~0.5 ms |
+| A small Mongo aggregation with one `$lookup` | ~5–50 ms |
+| Redis `GET` of a ready answer | ~0.5 ms, almost all of it network |
+
+### 2. What Redis is
+
+A separate server process that keeps data in RAM as key → value, reached over TCP with a tiny text
+protocol (RESP). `SET clinic:detail:42 "{...}" EX 300` is literally the bytes sent on the wire.
+
+### 3. Why it is fast — and the price of that speed
+
+1. **RAM.** No disk on the read path.
+2. **One thread executes every command.** No locks, no context switches between commands. Each
+   command is atomic by construction: nothing can run halfway through `INCR`.
+3. **An event loop** (epoll on Linux, kqueue on macOS) serves thousands of sockets from that one
+   thread — the same model as Node.js.
+
+The price is point 2 turned around: **one slow command stops everyone.** `KEYS clinic:*` is O(N)
+over the whole keyspace. With a million keys it runs for hundreds of milliseconds, and every
+other client — the cache reads of every visitor — waits. That is why `invalidate()` now uses `SCAN`:
+the cursor returns ~100 keys per call, and other commands run between calls. It also uses `UNLINK`
+instead of `DEL`: `DEL` frees memory on the main thread, `UNLINK` hands it to a background thread.
+
+### 4. Data structures, and where MedVia uses each
+
+| Type | Shape | MedVia |
+| --- | --- | --- |
+| String | one value | cached JSON (`clinic:detail:<id>`), the JWT blocklist (M1) |
+| Hash | small object of fields | not used yet |
+| List | ordered, push/pop at ends | used internally by BullMQ |
+| Set | unique members | not used yet |
+| Sorted set | members ordered by a score | BullMQ delayed jobs (score = run-at time), rankings |
+| Stream | append-only log | BullMQ events |
+
+A sorted set is how a "release this slot hold in exactly 10 minutes" job works: the job sits with
+score = now + 600 000 ms, and the worker pulls everything whose score is ≤ now.
+
+### 5. RAM is volatile — so what is safe to put there
+
+If Redis restarts, RAM is gone. Redis can persist (RDB snapshots, or an AOF append-only log — the
+`--appendonly yes` in `docker-compose.yml`), but the safe design assumes loss anyway:
+
+- **Cache:** lost → the next request rebuilds it from Mongo. Harmless.
+- **Queue:** lost → BullMQ jobs vanish. Acceptable because each M9 job also has a cron sweep that
+  finds anything missed.
+- **The slot lock:** lost → two patients in one slot. **Not acceptable**, so it lives in Mongo.
+
+There is a second reason the lock is not in Redis even though `SET key value NX` is atomic: the
+slot and the booking must change **together**. Mongo can wrap both in one transaction. Redis and
+Mongo cannot share a transaction, so a crash between the two writes leaves them disagreeing.
+
+### 6. TTL and memory
+
+RAM is finite. Every key gets a TTL so stale entries die on their own even if an invalidation is
+missed. When memory still fills up, `maxmemory-policy allkeys-lru` evicts the least recently used
+keys — correct for a pure cache.
+
+### 7. Two cache failure modes to know by name
+
+- **Stampede.** A hot key expires; 500 requests arrive in the same second; all miss; all run the
+  aggregation. Fixes: a short lock so one request rebuilds while the others wait, or refresh the key
+  shortly before it expires.
+- **Penetration.** Requests for an id that does not exist always miss, because `wrap()` treats a
+  `null` result as "not cached". Fix: cache the miss too, with a short TTL.
+
+Neither is handled yet. Both become relevant in M2 when the clinic list is cached.
+
+---
+
+### 8. Dependency injection — the problem it solves
+
+Without it, a class builds what it needs:
+
+```ts
+class BookingService {
+	private redis = new Redis('redis://localhost:6379');
+	private slots = new SlotService(new SlotRepository(mongoose.connection));
+}
+```
+
+Four problems, all from that `new`:
+
+1. **Every service opens its own Redis connection.** Ten services, ten sockets.
+2. **The address is hard-coded.** Production needs a different one.
+3. **It cannot be tested** without a real Redis and a real Mongo running.
+4. **Change `SlotService`'s constructor and every class that builds one breaks.**
+
+### 9. The idea: invert who creates what
+
+The class only *declares* what it needs; someone else creates and hands it over:
+
+```ts
+class BookingService {
+	constructor(private readonly cache: CacheService, private readonly slots: SlotService) {}
+}
+```
+
+This is **inversion of control**: the class no longer controls the creation of its dependencies.
+DI is the technique of passing them in through the constructor.
+
+Without a framework, someone still has to wire everything once, at the top:
+
+```ts
+const redis = new RedisService(new Redis(url));
+const cache = new CacheService(redis);
+const booking = new BookingService(cache, new SlotService(/* ... */));
+```
+
+With 50 classes, writing and ordering this by hand is the real burden. A DI container automates
+exactly this wiring.
+
+### 10. How Nest's container does it
+
+1. **TypeScript erases types at compile time** — at runtime there is no "RedisService" type to
+   read. `emitDecoratorMetadata` makes the compiler leave a note behind on every decorated class:
+   `design:paramtypes = [RedisService]`. `reflect-metadata` lets Nest read that note.
+2. **Tokens.** For a class, the class itself is the token. When there is no class to point to — a
+   third-party instance built by a factory, an interface (erased at runtime), a config value — a
+   string token is used with `@Inject(TOKEN)`. That is why `REDIS_CLIENT` exists.
+3. **Modules are visibility boundaries.** A provider is private to its module unless `exports`
+   lists it, and only modules that `import` that module see it. `@Global()` removes the need to
+   import — used only for `RedisModule`.
+4. **Resolution.** Nest builds the graph and creates providers in dependency order — the
+   `RedisClient` before `RedisService` before `CacheService` — **once each** (singleton scope by
+   default).
+5. **Cycles fail at boot** with "Nest can't resolve dependencies". `forwardRef()` works around it,
+   but a cycle usually means two services should be split differently.
+
+Scopes, for completeness: `DEFAULT` (singleton — almost always), `REQUEST` (a new instance per
+request; it propagates up to everything that injects it and costs performance), `TRANSIENT` (a new
+instance per injection).
+
+A trap that breaks DI silently: `import type { RedisService } from './redis.service'`. A type-only
+import is erased, so the metadata note records `Object` instead of `RedisService`, and boot fails
+with an unresolved dependency. Injected classes must be imported as values.
+
+### 11. What it buys in a test
+
+```ts
+const moduleRef = await Test.createTestingModule({
+	providers: [
+		CacheService,
+		{ provide: RedisService, useValue: { redis: fakeRedis, ping: async () => 'PONG' } },
+	],
+}).compile();
+```
+
+`CacheService` receives the fake through the same constructor and never knows. That is the whole
+payoff of point 3 in section 8.
+
+### 12. The two fixes in this step
+
+- `invalidate()` moved from `KEYS` + `DEL` to a `SCAN` cursor loop + `UNLINK` (sections 3 above).
+- `app.enableShutdownHooks()` in both `main.ts` files. Nest calls `onModuleDestroy` on `app.close()`,
+  but it only listens for SIGTERM / SIGINT when this is enabled. Without it, `RedisService.quit()`
+  never ran on Ctrl+C or a container stop — the connection was cut, not closed.
+
+### Interview questions
+
+1. Redis runs commands on one thread, yet handles thousands of clients. How?
+2. Why is `KEYS` dangerous in production while `SCAN` is fine, when both visit every key eventually?
+3. `SET slot:42 held NX EX 600` is atomic. Why is the slot lock still in MongoDB?
+4. What does `emitDecoratorMetadata` emit, and why can Nest not inject by interface?
+5. A hot cache key expires and the database spikes. Name the problem and two fixes.
+6. What breaks if `RedisService` is imported with `import type`?

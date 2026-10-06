@@ -7,6 +7,10 @@ import { LoggingInterceptor } from './libs/interceptor/Logging.interceptor';
 async function bootstrap() {
 	const app = await NestFactory.create(AppModule);
 
+	// Without this, onModuleDestroy / onApplicationShutdown never run on Ctrl+C or a
+	// container's SIGTERM, so connections are cut instead of closed.
+	app.enableShutdownHooks();
+
 	app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 	app.useGlobalInterceptors(new LoggingInterceptor());
 	app.enableCors({ origin: true, credentials: true });
