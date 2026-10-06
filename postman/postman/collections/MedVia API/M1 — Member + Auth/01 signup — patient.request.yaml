@@ -27,7 +27,7 @@ body:
           "memberType": "USER",
           "memberEmail": "{{patientEmail}}",
           "memberPassword": "{{patientPassword}}",
-          "memberFullName": "Aziza Karimova",
+          "memberFullName": "Feride Karimova",
           "memberLang": "RU",
           "termsAccepted": true,
           "memberPhone": "+998 90 123 45 67",

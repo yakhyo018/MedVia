@@ -14,7 +14,7 @@ body:
     variables: |-
       {
         "input": {
-          "memberFullName": "Aziza K. Updated",
+          "memberFullName": "Feride K. Updated",
           "memberNotify": {
             "chatMessages": false
           }
@@ -29,7 +29,7 @@ scripts:
       const msg = err.message || '';
       const m = gql.updateMember || {};
       pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
-      pm.test('name updated', () => pm.expect(m.memberFullName).to.eql('Aziza K. Updated'));
+      pm.test('name updated', () => pm.expect(m.memberFullName).to.eql('Feride K. Updated'));
       pm.test('chatMessages turned off', () => pm.expect((m.memberNotify || {}).chatMessages).to.eql(false));
       pm.test('the other two toggles were not reset', () => {
         pm.expect((m.memberNotify || {}).bookingUpdates).to.eql(true);

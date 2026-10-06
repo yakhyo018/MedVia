@@ -27,7 +27,7 @@ body:
           "memberType": "USER",
           "memberEmail": "{{blockEmail}}",
           "memberPassword": "{{patientPassword}}",
-          "memberFullName": "Aziza Karimova",
+          "memberFullName": "Feride Karimova",
           "memberLang": "RU",
           "termsAccepted": true
         }

@@ -458,7 +458,7 @@ works there.
 
 - **`sparse` unique index** on `memberGoogleId`: without it, the second account with no Google id
   collides on `null`.
-- **`lowercase: true`** on `memberEmail`: otherwise `Aziza@Gmail.com` and `aziza@gmail.com` are
+- **`lowercase: true`** on `memberEmail`: otherwise `Feride@Gmail.com` and `feride@gmail.com` are
   two accounts the unique index cannot see as duplicates.
 - **TTL index** on `sessions.sessionExpiresAt`: MongoDB deletes expired sessions by itself.
 - **Dot-path updates** for `memberNotify`: `$set: { memberNotify: { chatMessages: false } }`
