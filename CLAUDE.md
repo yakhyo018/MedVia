@@ -60,6 +60,22 @@ After porting any file: `rg -n "nestar|Nestar|property|Property" <file>` must re
 5. Update `LEARN.md` after each module.
 6. Answer in Uzbek; code and comments in English.
 
+## Milestone gates
+
+Every milestone (M1…M10) passes two gates set by the user:
+
+1. **Collection review — before any schema is written.** Present each collection the milestone
+   introduces: fields, enums, refs, indexes, and which fields look unnecessary for the portfolio
+   scope. The user may cut fields or whole collections and will have questions. No schema, DTO or
+   service code until the user says yes. The ER model (`MedVia-design/er/model.js`) is the starting
+   point, not a contract.
+2. **Postman check — before the milestone closes.** Add a folder for the milestone to
+   `postman/MedVia.postman_collection.json`: every query and mutation, the happy path and the
+   failure paths (no token, wrong role, invalid input), each with test scripts. The user runs it.
+   Only after it passes does `feature/<module>` merge into `develop`.
+
+Order inside a milestone: review → build → explain + LEARN.md → Postman folder → user runs it → merge.
+
 ## Validation
 
 ```bash

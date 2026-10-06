@@ -1,0 +1,96 @@
+{
+	"info": {
+		"name": "MedVia API",
+		"description": "One folder per milestone. Select the 'MedVia Local' environment, start the API with `npm run start:dev`, then run a folder with the Collection Runner. Every request carries test scripts; a milestone is closed only when its folder passes.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "M0 — Skeleton",
+			"description": "Proves the API boots, reaches Atlas and Redis, and returns errors in one shape.",
+			"item": [
+				{
+					"name": "health — Atlas and Redis reachable",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+									"const body = pm.response.json();",
+									"pm.test('no GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"const h = body.data.health;",
+									"pm.test('status is ok', () => pm.expect(h.status).to.eql('ok'));",
+									"pm.test('mongo is connected', () => pm.expect(h.mongo).to.eql('connected'));",
+									"pm.test('redis answers PONG', () => pm.expect(h.redis).to.eql('PONG'));",
+									"pm.test('time is a valid date', () => pm.expect(Date.parse(h.time)).to.not.be.NaN);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query Health {\n  health {\n    status\n    mongo\n    redis\n    time\n  }\n}",
+								"variables": ""
+							}
+						},
+						"url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] }
+					}
+				},
+				{
+					"name": "unknown field — error has the formatError shape",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('returns errors', () => pm.expect(body.errors).to.be.an('array').that.is.not.empty);",
+									"const e = body.errors[0];",
+									"pm.test('error has a message string', () => pm.expect(e.message).to.be.a('string'));",
+									"pm.test('error has extensions.code', () => pm.expect(e.extensions.code).to.eql('GRAPHQL_VALIDATION_FAILED'));",
+									"pm.test('no stack trace leaks to the client', () => pm.expect(e.extensions.stacktrace).to.be.undefined);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "graphql",
+							"graphql": { "query": "query {\n  doesNotExist\n}", "variables": "" }
+						},
+						"url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] }
+					}
+				},
+				{
+					"name": "root — REST welcome",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+									"pm.test('welcome text', () => pm.expect(pm.response.text()).to.include('MedVia API'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/", "host": ["{{baseUrl}}"], "path": [""] }
+					}
+				}
+			]
+		}
+	]
+}
