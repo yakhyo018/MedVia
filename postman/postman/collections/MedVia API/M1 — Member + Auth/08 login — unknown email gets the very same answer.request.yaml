@@ -1,0 +1,33 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation Login($input: LoginInput!) {
+        login(input: $input) { _id memberType memberEmail memberLastLoginAt accessToken }
+      }
+    variables: |-
+      {
+        "input": {
+          "memberEmail": "{{tmpEmail}}",
+          "memberPassword": "whatever-123"
+        }
+      }
+scripts:
+  - type: beforeRequest
+    code: pm.environment.set('tmpEmail', 'nobody.' + Date.now() + '@medvia.test');
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      pm.test('refused: Wrong email or password!', () => pm.expect(msg).to.eql('Wrong email or password!'));
+      pm.test('no hint that the email does not exist', () => pm.expect(msg.toLowerCase()).to.not.include('no member'));
+    language: text/javascript
+order: 8000

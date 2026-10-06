@@ -35,6 +35,18 @@ After porting any file: `rg -n "nestar|Nestar|property|Property" <file>` must re
 - The slot lock lives in MongoDB (atomic `findOneAndUpdate`).
   Redis is cache and queue only — never a second source of truth.
 
+## Auth rules
+
+- Access token: 15 min, claims `{ sub, memberType, iatMs, jti }` only — no personal data in a JWT.
+- Refresh token: 32 random bytes in an httpOnly `medvia_rt` cookie (path `/graphql`, SameSite Lax);
+  only its SHA-256 is stored, in `sessions`. Rotated on every refresh; a replay after the
+  10-second grace ends the session and every access token of the member.
+- Revocation lives in Redis: `auth:jti:<id>` (logout) and `auth:revoked:<memberId>` (block,
+  password change, theft) compared in milliseconds. Fails open when Redis is down.
+- CORS allows only `FRONTEND_URL`. Never `origin: true` with credentials.
+- Interfaces in decorated signatures (`@Context() ctx: T`, `@AuthMember() m: AuthMember`) need
+  `import type`; injected classes must never be `import type` — the metadata would read `Object`.
+
 ## DTO rules
 
 - Every `@InputType()` field needs at least one class-validator decorator — `@IsOptional()` at
@@ -82,6 +94,9 @@ Order inside a milestone: review → build → explain + LEARN.md → Postman fo
   `.resources/definition.yaml` per folder (holds `order` and `description`). Write requests in this
   format directly. Never hand the user a v2.1 JSON to import — the importer drops GraphQL queries.
 - GraphQL body: `body: { type: graphql, content: { query: |- ... } }`.
+- Never declare `data`, `tests`, `environment`, `globals`, `request`, `iteration` or `responseBody`
+  at the top of a script — they are legacy Postman sandbox globals and the script fails with
+  "Identifier has already been declared". Use `gql` for `body.data`.
 - Test scripts must never throw. Guard every read: `const h = (body.data && body.data.health) || {}`,
   so a broken response reports a failed test instead of a script error. Put the server's own error
   text in the assertion message: `pm.expect(body.errors, JSON.stringify(body.errors))`.
@@ -113,7 +128,7 @@ unrelated files on every run. Here the two halves are explicit: `lint:check` nev
 2. Read `git diff --cached` in full.
 3. Scan what is staged for secrets — it must print nothing:
    ```bash
-   git diff --cached | grep -nE "mongodb(\+srv)?://[^<]+:[^<@]+@|SECRET_TOKEN=[^ .{][^ ]{7,}|rediss?://[^ ]+:[^ ]+@"
+   git diff --cached | grep -nE "mongodb(\+srv)?://[^<]+:[^<@]+@|SECRET_TOKEN=[^ .{][^ ]{7,}|rediss?://[^ ]+:[^ ]+@|ADMIN_PASSWORD=[^ .{[]"
    ```
 
 `.env.example` is the committed template and only ever holds placeholders (`<user>:<password>`).

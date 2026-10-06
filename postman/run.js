@@ -13,6 +13,9 @@ const path = require('path');
 const yaml = require('js-yaml');
 const newman = require('newman');
 
+// Same .env the API reads; values already set in the shell win.
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
 const POSTMAN_DIR = __dirname;
 const COLLECTION_NAME = 'MedVia API';
 const SCRIPT_EVENT = { afterResponse: 'test', beforeRequest: 'prerequest' };
@@ -80,11 +83,20 @@ function loadEnvironment(collectionDir) {
 		value,
 		enabled: true,
 	}));
-	if (process.env.BASE_URL) {
-		const base = values.find((v) => v.key === 'baseUrl');
-		if (base) base.value = process.env.BASE_URL;
-		else values.push({ key: 'baseUrl', value: process.env.BASE_URL, enabled: true });
-	}
+	const override = (key, value) => {
+		if (!value) return;
+		const existing = values.find((v) => v.key === key);
+		if (existing) existing.value = value;
+		else values.push({ key, value, enabled: true });
+	};
+
+	override('baseUrl', process.env.BASE_URL);
+
+	// Admin credentials come from .env and live only in this process's memory. They are
+	// never written into the Postman YAML files, which are committed to git.
+	override('adminEmail', process.env.ADMIN_EMAIL);
+	override('adminPassword', process.env.ADMIN_PASSWORD);
+
 	return { name: 'MedVia Local', values };
 }
 

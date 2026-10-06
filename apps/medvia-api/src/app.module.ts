@@ -18,6 +18,8 @@ import { T } from './libs/types/common';
 			driver: ApolloDriver,
 			playground: true,
 			autoSchemaFile: true,
+			// res is needed to set and clear the refresh-token cookie from a resolver.
+			context: ({ req, res }: T) => ({ req, res }),
 			formatError: (error: T) => {
 				const res = error?.extensions?.originalError || error?.extensions?.response;
 				const rawMsg = res?.message || error?.message;

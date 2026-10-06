@@ -1,0 +1,29 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation RefreshToken {
+        refreshToken { _id memberEmail accessToken }
+      }
+scripts:
+  - type: beforeRequest
+    code: |-
+      const jar = pm.cookies.jar();
+      jar.set(pm.environment.get('baseUrl') + '/graphql',
+        { name: 'medvia_rt', value: pm.environment.get('rtFirst') || 'missing', path: '/graphql', httpOnly: true },
+        (e) => { if (e) console.log('cookie jar error', e); });
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      pm.test('refused: Your session has expired, please log in again!', () => pm.expect(msg).to.eql('Your session has expired, please log in again!'));
+    language: text/javascript
+order: 15000

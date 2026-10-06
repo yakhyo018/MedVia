@@ -20,6 +20,16 @@ export const envValidationSchema = Joi.object({
 
 	SECRET_TOKEN: Joi.string().min(16).required(),
 
+	// The only browser origin allowed to send the refresh cookie (comma-separated for several).
+	FRONTEND_URL: Joi.string().default('http://localhost:4000'),
+
+	// Read by `npm run seed:admin` and by `npm run test:api`; the API itself never needs them.
+	ADMIN_EMAIL: Joi.string()
+		.email({ tlds: { allow: false } })
+		.allow('')
+		.optional(),
+	ADMIN_PASSWORD: Joi.string().allow('').optional(),
+
 	// Added in later milestones; optional for now.
 	GOOGLE_CLIENT_ID: Joi.string().allow('').optional(),
 	MEDICAL_ENC_KEY: Joi.string().allow('').optional(),

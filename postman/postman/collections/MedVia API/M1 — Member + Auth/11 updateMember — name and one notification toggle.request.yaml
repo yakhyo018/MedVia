@@ -1,0 +1,39 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation UpdateMember($input: MemberUpdate!) {
+        updateMember(input: $input) { memberFullName memberNotify { bookingUpdates visitReminders chatMessages } }
+      }
+    variables: |-
+      {
+        "input": {
+          "memberFullName": "Aziza K. Updated",
+          "memberNotify": {
+            "chatMessages": false
+          }
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const m = gql.updateMember || {};
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('name updated', () => pm.expect(m.memberFullName).to.eql('Aziza K. Updated'));
+      pm.test('chatMessages turned off', () => pm.expect((m.memberNotify || {}).chatMessages).to.eql(false));
+      pm.test('the other two toggles were not reset', () => {
+        pm.expect((m.memberNotify || {}).bookingUpdates).to.eql(true);
+        pm.expect((m.memberNotify || {}).visitReminders).to.eql(true);
+      });
+    language: text/javascript
+order: 11000

@@ -2,30 +2,26 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { AuthService } from '../auth.service';
 
 /**
- * Optional login. Guests pass through with authMember = null, logged-in members
- * get their member attached, so one query can serve both.
+ * Optional login. Guests pass with authMember = null; a valid token attaches the
+ * member, so one query can serve both. An invalid token is treated as a guest.
  */
 @Injectable()
 export class WithoutGuard implements CanActivate {
 	constructor(private readonly authService: AuthService) {}
 
 	public async canActivate(context: ExecutionContext | any): Promise<boolean> {
-		console.info('--- @guard() Authentication [WithoutGuard] ---');
 		if (context.contextType !== 'graphql') return false;
 
 		const request = context.getArgByIndex(2).req;
-		const bearerToken = request.headers.authorization;
 		request.body.authMember = null;
 
-		if (bearerToken) {
+		if (request.headers.authorization) {
 			try {
-				const token = bearerToken.split(' ')[1];
-				request.body.authMember = await this.authService.verifyToken(token);
+				request.body.authMember = await this.authService.authenticate(request);
 			} catch {
 				request.body.authMember = null;
 			}
 		}
-
 		return true;
 	}
 }

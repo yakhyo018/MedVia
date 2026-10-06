@@ -15,9 +15,13 @@ export enum Messages {
 	ONLY_SPECIFIC_ROLES_ALLOWED = 'Allowed only for members with specific roles!',
 	NOT_ALLOWED_REQUEST = 'Not allowed request!',
 	BLOCKED_USER = 'You have been blocked, please contact support!',
-	WRONG_PASSWORD = 'Wrong password entered, please try again!',
+	WRONG_CREDENTIALS = 'Wrong email or password!',
+	WRONG_CURRENT_PASSWORD = 'The current password is incorrect!',
 	USED_EMAIL = 'This email address is already registered!',
-	NO_MEMBER_EMAIL = 'No member with that email address!',
+	TERMS_REQUIRED = 'Please accept the Terms of Use and Privacy Policy!',
+	SESSION_EXPIRED = 'Your session has expired, please log in again!',
+	GOOGLE_NOT_CONFIGURED = 'Google sign-in is not configured on this server!',
+	GOOGLE_TOKEN_INVALID = 'Google sign-in failed, please try again!',
 	PROVIDE_ALLOWED_FORMAT = 'Please provide jpg, jpeg or png images!',
 	SELF_SUBSCRIPTION_DENIED = 'Self subscription is denied!',
 }
@@ -27,3 +31,13 @@ export enum Direction {
 	DESC = -1,
 }
 registerEnumType(Direction, { name: 'Direction' });
+
+export enum Language {
+	KO = 'KO',
+	EN = 'EN',
+	RU = 'RU',
+	UZ = 'UZ',
+	KK = 'KK',
+	ZH = 'ZH',
+}
+registerEnumType(Language, { name: 'Language' });

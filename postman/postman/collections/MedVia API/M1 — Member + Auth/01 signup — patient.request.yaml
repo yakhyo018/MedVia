@@ -1,0 +1,70 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation Signup($input: MemberInput!) {
+        signup(input: $input) {
+          _id
+          memberType
+          memberAuthType
+          memberEmail
+          memberFullName
+          memberLang
+          memberMustChangePassword
+          memberNotify { bookingUpdates visitReminders chatMessages }
+          memberTermsAt
+          accessToken
+        }
+      }
+    variables: |-
+      {
+        "input": {
+          "memberType": "USER",
+          "memberEmail": "{{patientEmail}}",
+          "memberPassword": "{{patientPassword}}",
+          "memberFullName": "Aziza Karimova",
+          "memberLang": "RU",
+          "termsAccepted": true,
+          "memberPhone": "+998 90 123 45 67",
+          "memberCountry": "UZ"
+        }
+      }
+scripts:
+  - type: beforeRequest
+    code: |-
+      pm.environment.set('patientEmail', 'patient.' + Date.now() + '@medvia.test');
+      pm.environment.set('patientPassword', 'Patient#2026');
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      function decodeJwt(token) {
+        try {
+          const part = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+          return JSON.parse(atob(part + '='.repeat((4 - (part.length % 4)) % 4)));
+        } catch (e) { return {}; }
+      }
+      const m = gql.signup || {};
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('memberType is USER', () => pm.expect(m.memberType).to.eql('USER'));
+      pm.test('memberAuthType is EMAIL', () => pm.expect(m.memberAuthType).to.eql('EMAIL'));
+      pm.test('email stored lowercase', () => pm.expect(m.memberEmail).to.eql(pm.environment.get('patientEmail').toLowerCase()));
+      pm.test('terms acceptance time recorded', () => pm.expect(Date.parse(m.memberTermsAt)).to.not.be.NaN);
+      pm.test('all notifications on by default', () => pm.expect(m.memberNotify).to.eql({ bookingUpdates: true, visitReminders: true, chatMessages: true }));
+      pm.test('access token returned', () => pm.expect(String(m.accessToken).split('.')).to.have.length(3));
+      const claims = decodeJwt(m.accessToken);
+      pm.test('token carries only ids, role and times — no personal data', () =>
+        pm.expect(Object.keys(claims).sort()).to.eql(['exp', 'iat', 'iatMs', 'jti', 'memberType', 'sub']));
+      pm.test('access token lives 15 minutes', () => pm.expect(claims.exp - claims.iat).to.eql(900));
+      pm.test('refresh token set as a cookie', () => pm.expect(pm.cookies.has('medvia_rt')).to.be.true);
+      pm.environment.set('patientToken', m.accessToken || '');
+    language: text/javascript
+order: 1000
