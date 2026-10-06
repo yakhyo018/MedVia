@@ -37,6 +37,10 @@ After porting any file: `rg -n "nestar|Nestar|property|Property" <file>` must re
 
 ## Auth rules
 
+- `components/auth`: `auth.service` is the only door other modules use (passwords + `startSession`,
+  `refreshSession`, `endSession`, `endAllSessions`, `withAccessToken`). `token.service` = access JWT,
+  `session.service` = refresh sessions (not exported), `refresh-cookie.ts` = the cookie. Guards use
+  `token.service`. Never call session or cookie code from another module.
 - Access token: 15 min, claims `{ sub, memberType, iatMs, jti }` only — no personal data in a JWT.
 - Refresh token: 32 random bytes in an httpOnly `medvia_rt` cookie (path `/graphql`, SameSite Lax);
   only its SHA-256 is stored, in `sessions`. Rotated on every refresh; a replay after the

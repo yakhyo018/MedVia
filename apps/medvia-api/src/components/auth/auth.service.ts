@@ -1,24 +1,25 @@
-import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { randomUUID } from 'crypto';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import type { Request, Response } from 'express';
 import * as bcrypt from 'bcryptjs';
-import { RedisService } from '../../redis/redis.service';
-import { AuthMember, T } from '../../libs/types/common';
+import { Member } from '../../libs/dto/member/member';
 import { Messages } from '../../libs/enums/common.enum';
-import { MemberType } from '../../libs/enums/member.enum';
-import { shapeIntoMongoObjectId } from '../../libs/config';
-import { ACCESS_TOKEN_TTL_SECONDS } from './auth.constants';
+import { MemberStatus } from '../../libs/enums/member.enum';
+import { AuthMember, T } from '../../libs/types/common';
+import { TokenService } from './token.service';
+import { SessionService } from './session.service';
+import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from './refresh-cookie';
 
 const BCRYPT_ROUNDS = 10;
 
-const jtiKey = (jti: string) => `auth:jti:${jti}`;
-const cutoffKey = (memberId: string) => `auth:revoked:${memberId}`;
-const nowSeconds = () => Math.floor(Date.now() / 1000);
-
+/**
+ * The one door other modules use for authentication: passwords, and the life of a
+ * session — start, refresh, end here, end everywhere. Tokens, refresh sessions and
+ * the cookie are details behind it; callers never touch them directly.
+ */
 @Injectable()
 export class AuthService {
-	private readonly logger = new Logger(AuthService.name);
-
 	/**
 	 * Compared against when the email is unknown, so a wrong email costs the same
 	 * bcrypt time as a wrong password and response timing cannot reveal which accounts exist.
@@ -26,8 +27,9 @@ export class AuthService {
 	private readonly dummyHash = bcrypt.hashSync('timing-equaliser', BCRYPT_ROUNDS);
 
 	constructor(
-		private readonly jwtService: JwtService,
-		private readonly redisService: RedisService,
+		@InjectModel('Member') private readonly memberModel: Model<Member>,
+		private readonly tokenService: TokenService,
+		private readonly sessionService: SessionService,
 	) {}
 
 	/* ───────────────────────── passwords ───────────────────────── */
@@ -42,94 +44,68 @@ export class AuthService {
 		return !!hash && match;
 	}
 
-	/* ───────────────────────── access tokens ───────────────────────── */
+	/* ───────────────────────── session lifecycle ───────────────────────── */
 
-	/**
-	 * Only the id and the role travel in the token: a JWT is signed, not encrypted.
-	 * iatMs is the issue time in milliseconds. The standard iat claim has whole seconds,
-	 * too coarse for revocation: a token issued earlier in the same second as a block
-	 * would otherwise survive it.
-	 */
-	public async createAccessToken(member: { _id: any; memberType: MemberType }): Promise<string> {
-		return await this.jwtService.signAsync(
-			{ sub: String(member._id), memberType: member.memberType, iatMs: Date.now() },
-			{ jwtid: randomUUID(), expiresIn: ACCESS_TOKEN_TTL_SECONDS },
-		);
+	/** Signup and every login path: refresh token into the cookie, access token into the body. */
+	public async startSession(member: T, req: Request, res: Response): Promise<Member> {
+		const refreshToken = await this.sessionService.issue(member._id, req.headers['user-agent']);
+		setRefreshCookie(res, refreshToken);
+		return await this.withAccessToken(member);
 	}
 
-	/** Reads the bearer token, checks signature, expiry and revocation. Throws otherwise. */
-	public async authenticate(request: T): Promise<AuthMember> {
-		const header: string | undefined = request.headers?.authorization;
-		if (!header) throw new BadRequestException(Messages.TOKEN_NOT_EXIST);
+	/**
+	 * The cookie is the credential: the access token may already be expired — that is
+	 * why the client is refreshing. The member is re-read, so a role change or a block
+	 * takes effect on the next refresh at the latest.
+	 */
+	public async refreshSession(req: Request, res: Response): Promise<Member> {
+		const token = readRefreshCookie(req);
+		if (!token) throw new UnauthorizedException(Messages.SESSION_EXPIRED);
 
-		const [scheme, token] = header.split(' ');
-		if (scheme !== 'Bearer' || !token) throw new UnauthorizedException(Messages.NOT_AUTHENTICATED);
-
-		let payload: T;
+		let rotated;
 		try {
-			payload = await this.jwtService.verifyAsync(token);
-		} catch {
-			throw new UnauthorizedException(Messages.NOT_AUTHENTICATED);
+			rotated = await this.sessionService.rotate(token);
+		} catch (err) {
+			clearRefreshCookie(res);
+			throw err;
 		}
 
-		if (await this.isRevoked(payload)) throw new UnauthorizedException(Messages.NOT_AUTHENTICATED);
+		const member = await this.memberModel.findById(rotated.memberId).lean().exec();
+		if (!member || member.memberStatus !== MemberStatus.ACTIVE) {
+			await this.endAllSessions(rotated.memberId);
+			clearRefreshCookie(res);
+			throw new UnauthorizedException(Messages.SESSION_EXPIRED);
+		}
 
+		setRefreshCookie(res, rotated.token);
+		return await this.withAccessToken(member);
+	}
+
+	/** Logout: this device only — its refresh session and its current access token. */
+	public async endSession(authMember: AuthMember, req: Request, res: Response): Promise<boolean> {
+		const token = readRefreshCookie(req);
+		if (token) await this.sessionService.revoke(token);
+		await this.tokenService.revokeAccessToken(authMember.jti, authMember.exp);
+		clearRefreshCookie(res);
+		return true;
+	}
+
+	/**
+	 * Block, delete, password change, account linking: every refresh session and every
+	 * access token of the member dies now. Passing `keepCurrent` spares the session whose
+	 * cookie is on that request — the device that changed the password stays signed in.
+	 */
+	public async endAllSessions(memberId: any, keepCurrent?: Request): Promise<void> {
+		const keepToken = keepCurrent ? readRefreshCookie(keepCurrent) : null;
+		await this.sessionService.revokeAll(memberId, keepToken);
+		await this.tokenService.revokeAllAccessTokens(memberId);
+	}
+
+	/** The member as GraphQL returns it, plus a fresh access token. */
+	public async withAccessToken(member: T): Promise<Member> {
 		return {
-			_id: shapeIntoMongoObjectId(payload.sub),
-			memberType: payload.memberType,
-			jti: payload.jti,
-			iat: payload.iat,
-			exp: payload.exp,
-		};
-	}
-
-	/* ───────────────────────── revocation (Redis) ───────────────────────── */
-
-	/** Logout on this device: this one token dies; its key expires with the token. */
-	public async revokeAccessToken(jti: string, exp: number): Promise<void> {
-		const ttl = exp - nowSeconds();
-		if (ttl <= 0) return;
-		try {
-			await this.redisService.redis.set(jtiKey(jti), '1', 'EX', ttl);
-		} catch (err: any) {
-			this.logger.warn(`could not revoke token ${jti}: ${err.message}`);
-		}
-	}
-
-	/**
-	 * Block, password change, stolen session: every access token issued before now dies.
-	 * One key per member instead of one per token, because we never knew the token ids.
-	 * It may expire after one access-token lifetime: by then every older token has expired anyway.
-	 */
-	public async revokeAllAccessTokens(memberId: any): Promise<void> {
-		try {
-			await this.redisService.redis.set(
-				cutoffKey(String(memberId)),
-				String(Date.now()),
-				'EX',
-				ACCESS_TOKEN_TTL_SECONDS,
-			);
-		} catch (err: any) {
-			this.logger.warn(`could not revoke tokens of ${memberId}: ${err.message}`);
-		}
-	}
-
-	/**
-	 * Fails open: if Redis is down the request continues and the outage is logged.
-	 * The short access-token lifetime stays as the backstop.
-	 */
-	private async isRevoked(payload: T): Promise<boolean> {
-		try {
-			const [revokedJti, cutoff] = await this.redisService.redis.mget(
-				jtiKey(payload.jti),
-				cutoffKey(payload.sub),
-			);
-			if (revokedJti) return true;
-			const issuedMs = payload.iatMs ?? payload.iat * 1000;
-			return cutoff !== null && issuedMs < Number(cutoff);
-		} catch (err: any) {
-			this.logger.warn(`revocation check skipped, Redis unavailable: ${err.message}`);
-			return false;
-		}
+			...member,
+			accessToken: await this.tokenService.createAccessToken(member as Member),
+		} as Member;
 	}
 }

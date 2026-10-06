@@ -5,7 +5,7 @@ import { createHash, randomBytes } from 'crypto';
 import { Messages } from '../../libs/enums/common.enum';
 import { T } from '../../libs/types/common';
 import { REFRESH_REUSE_GRACE_SECONDS, REFRESH_TOKEN_TTL_DAYS } from './auth.constants';
-import { AuthService } from './auth.service';
+import { TokenService } from './token.service';
 
 /**
  * SHA-256, not bcrypt: bcrypt is slow on purpose because passwords are short and
@@ -26,7 +26,7 @@ export class SessionService {
 
 	constructor(
 		@InjectModel('Session') private readonly sessionModel: Model<T>,
-		private readonly authService: AuthService,
+		private readonly tokenService: TokenService,
 	) {}
 
 	/** Starts a session for one device and returns the raw refresh token, shown once. */
@@ -87,7 +87,7 @@ export class SessionService {
 		if (rotatedAgo <= REFRESH_REUSE_GRACE_SECONDS) return;
 
 		await this.sessionModel.deleteOne({ _id: replayed._id }).exec();
-		await this.authService.revokeAllAccessTokens(replayed.memberId);
+		await this.tokenService.revokeAllAccessTokens(replayed.memberId);
 		this.logger.warn(`refresh token reuse detected, session ended for member ${replayed.memberId}`);
 	}
 

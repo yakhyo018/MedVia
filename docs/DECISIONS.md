@@ -49,3 +49,12 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | Throttle `login` 5/min and `signup`/`googleLogin` 10/min, keyed by IP + email. | Limits guessing one account without locking out a whole office or mobile carrier behind one IP. | In-memory counters: correct only for one API process. | IP only; Redis-backed storage (needed for several processes). |
 | `trust proxy` in production. | Behind Nginx every request comes from 127.0.0.1; the throttle would count all users as one. | Must match the real proxy depth. | Read `X-Forwarded-For` by hand. |
 | ADMIN only through `npm run seed:admin`. | Signup can never create an ADMIN; the only door needs shell access and the database credentials. | One more manual step on a fresh environment. | Promote via a database console. |
+
+## M1.1 — Auth refactor
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| `AuthService` is a facade over `TokenService`, `SessionService` and the cookie; `member.service` calls only it. | "Sign out everywhere" was copied in five places and one copy had already lost half its logic. Member code knew about cookies. | One more file and one more layer than Nestar's single `auth.service`. | Keep the orchestration in `member.service`; an `auth.resolver` owning refresh/logout. |
+| `SessionService` not exported from `AuthModule`. | Nobody can bypass the facade; Nest refuses the injection at boot. | — | Export everything (Nestar's habit). |
+| `AuthModule` registers the Member model, not `MemberModule`. | Refresh must re-check status; importing `MemberModule` would create a module cycle. | Two modules register the same model name (harmless on one connection). | Pass a loader callback into `refreshSession`. |
+| `refreshToken` / `logout` resolvers call `AuthService` directly. | A member-service method that only forwards the call adds a layer with no logic. | Resolver injects two services. | Pass-through methods in `member.service`. |

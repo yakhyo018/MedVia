@@ -488,3 +488,67 @@ works there.
 9. The throttle is keyed by IP + email. What goes wrong with IP alone behind Nginx, and with IP
    alone in an office?
 10. The suite caught a same-second bug in revocation. Why was `<=` not the fix?
+
+---
+
+## M1.1 — Refactor: one door for authentication
+
+### The problem
+
+After M1, `member.service.ts` held 22 lines of token, session and cookie work. Three symptoms:
+
+1. **Duplication.** "Sign this member out everywhere" — end refresh sessions, revoke access
+   tokens — was written by hand in five places.
+2. **Drift had already started.** One of the five copies ended the sessions but forgot the
+   access tokens. Harmless today (a block revokes them earlier), but this is exactly how copied
+   code rots: one copy out of five gets forgotten.
+3. **Wrong knowledge in the wrong place.** The member module knew which cookie the browser gets.
+
+### The shape now
+
+```
+member.resolver ──► member.service ──► auth.service   (the facade: the only door)
+        │                                 ├── token.service     access JWT: create, verify, revoke
+        └── refreshToken / logout ───────►├── session.service   refresh sessions in Mongo
+                                          └── refresh-cookie    set / read / clear the cookie
+guards ──► token.service
+```
+
+| File | Owns |
+| --- | --- |
+| `auth.service.ts` | passwords, and the life of a session: `startSession`, `refreshSession`, `endSession`, `endAllSessions`, `withAccessToken` |
+| `token.service.ts` | the access token only |
+| `session.service.ts` | refresh sessions only — **not exported** from `AuthModule` |
+| `member.service.ts` | members only: credentials, create, update, password change |
+
+Five copies became one `endAllSessions()`, and the forgotten half disappeared with them.
+
+### Three ideas behind it
+
+**Facade.** Other modules see a few verbs — start, refresh, end — not the machinery behind them.
+When M3 lets a clinic create a doctor account, or a magic-link login is added later, each new path
+is one call to `startSession()`.
+
+**Encapsulation through `exports`.** `SessionService` is not exported, so no other module can
+reach around the facade and delete sessions directly. Nest enforces this at boot: injecting a
+provider that a module does not export fails with "Nest can't resolve dependencies".
+
+**Dependencies point one way.** `member → auth`, never back. `AuthService` needs to re-read a
+member's status on refresh, so `AuthModule` registers the Member **model** with `forFeature` — not
+`MemberModule`, which would create a cycle. `SessionService` used to depend on `AuthService`; now
+that `AuthService` depends on `SessionService`, that edge would close a loop, so it moved to
+`TokenService`.
+
+### Why it was safe
+
+A refactor must not change behaviour, and "I read the diff carefully" is not proof. The 90-assertion
+Postman suite is: it passed before the refactor and after it. DI mistakes appear only at boot, not
+at compile time — so the check was a booted server, not just `tsc`.
+
+### Interview questions
+
+1. What is a facade, and what did it buy in this module?
+2. `SessionService` is not exported. What stops another module from using it anyway?
+3. `AuthService` needs member data but must not import `MemberModule`. How, and why not?
+4. Five copies of two lines — why not leave them? What had already gone wrong?
+5. Typecheck passed after the refactor. Why was that not enough to call it done?

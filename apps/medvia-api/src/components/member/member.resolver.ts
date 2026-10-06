@@ -3,6 +3,7 @@ import { Args, Context, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Throttle } from '@nestjs/throttler';
 import type { ObjectId } from 'mongoose';
 import { MemberService } from './member.service';
+import { AuthService } from '../auth/auth.service';
 import { Member, Members } from '../../libs/dto/member/member';
 import {
 	ChangePasswordInput,
@@ -24,7 +25,10 @@ const ONE_MINUTE = 60_000;
 
 @Resolver()
 export class MemberResolver {
-	constructor(private readonly memberService: MemberService) {}
+	constructor(
+		private readonly memberService: MemberService,
+		private readonly authService: AuthService,
+	) {}
 
 	@Throttle({ default: { limit: 10, ttl: ONE_MINUTE } })
 	@UseGuards(GqlThrottlerGuard)
@@ -62,7 +66,7 @@ export class MemberResolver {
 	@Mutation(() => Member)
 	public async refreshToken(@Context() { req, res }: T): Promise<Member> {
 		console.log('Mutation: refreshToken');
-		return await this.memberService.refreshToken(req, res);
+		return await this.authService.refreshSession(req, res);
 	}
 
 	@UseGuards(AuthGuard)
@@ -72,7 +76,7 @@ export class MemberResolver {
 		@Context() { req, res }: T,
 	): Promise<boolean> {
 		console.log('Mutation: logout');
-		return await this.memberService.logout(authMember, req, res);
+		return await this.authService.endSession(authMember, req, res);
 	}
 
 	@UseGuards(AuthGuard)

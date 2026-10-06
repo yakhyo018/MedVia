@@ -22,9 +22,7 @@ import { MemberAuthType, MemberStatus, MemberType } from '../../libs/enums/membe
 import { AuthMember, T } from '../../libs/types/common';
 import { escapeRegex, shapeIntoMongoObjectId } from '../../libs/config';
 import { AuthService } from '../auth/auth.service';
-import { SessionService } from '../auth/session.service';
 import { GoogleService } from '../auth/google.service';
-import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../auth/refresh-cookie';
 
 const DUPLICATE_KEY = 11000;
 
@@ -33,7 +31,6 @@ export class MemberService {
 	constructor(
 		@InjectModel('Member') private readonly memberModel: Model<Member>,
 		private readonly authService: AuthService,
-		private readonly sessionService: SessionService,
 		private readonly googleService: GoogleService,
 	) {}
 
@@ -58,7 +55,7 @@ export class MemberService {
 			throw new BadRequestException(Messages.CREATE_FAILED);
 		}
 
-		return await this.startSession(member.toObject(), req, res);
+		return await this.authService.startSession(member.toObject(), req, res);
 	}
 
 	/**
@@ -83,7 +80,7 @@ export class MemberService {
 		if (member.memberStatus === MemberStatus.BLOCK)
 			throw new ForbiddenException(Messages.BLOCKED_USER);
 
-		return await this.startSession(await this.touchLastLogin(member._id), req, res);
+		return await this.authService.startSession(await this.touchLastLogin(member._id), req, res);
 	}
 
 	public async googleLogin(input: GoogleLoginInput, req: Request, res: Response): Promise<Member> {
@@ -100,7 +97,7 @@ export class MemberService {
 		if (member.memberStatus === MemberStatus.BLOCK)
 			throw new ForbiddenException(Messages.BLOCKED_USER);
 
-		return await this.startSession(await this.touchLastLogin(member._id), req, res);
+		return await this.authService.startSession(await this.touchLastLogin(member._id), req, res);
 	}
 
 	/**
@@ -122,8 +119,7 @@ export class MemberService {
 				)
 				.lean()
 				.exec();
-			await this.sessionService.revokeAll(existing._id as any);
-			await this.authService.revokeAllAccessTokens(existing._id);
+			await this.authService.endAllSessions(existing._id);
 			return linked as T;
 		}
 
@@ -142,16 +138,6 @@ export class MemberService {
 		return created.toObject();
 	}
 
-	/** New access token in the body, new refresh token in the httpOnly cookie. */
-	private async startSession(member: T, req: Request, res: Response): Promise<Member> {
-		const refreshToken = await this.sessionService.issue(member._id, req.headers['user-agent']);
-		setRefreshCookie(res, refreshToken);
-		return {
-			...member,
-			accessToken: await this.authService.createAccessToken(member as any),
-		} as Member;
-	}
-
 	private async touchLastLogin(memberId: any): Promise<T> {
 		return (await this.memberModel
 			.findByIdAndUpdate(memberId, { memberLastLoginAt: new Date() }, { new: true })
@@ -159,44 +145,7 @@ export class MemberService {
 			.exec()) as T;
 	}
 
-	/* ───────────────────────── session lifecycle ───────────────────────── */
-
-	/**
-	 * No AuthGuard here: the access token may already be expired — that is why the
-	 * client is refreshing. The cookie is the credential. The member is re-read so a
-	 * role change or a block takes effect on the next refresh at the latest.
-	 */
-	public async refreshToken(req: Request, res: Response): Promise<Member> {
-		const token = readRefreshCookie(req);
-		if (!token) throw new UnauthorizedException(Messages.SESSION_EXPIRED);
-
-		let rotated;
-		try {
-			rotated = await this.sessionService.rotate(token);
-		} catch (err) {
-			clearRefreshCookie(res);
-			throw err;
-		}
-
-		const member = await this.memberModel.findById(rotated.memberId).lean().exec();
-		if (!member || member.memberStatus !== MemberStatus.ACTIVE) {
-			await this.sessionService.revokeAll(rotated.memberId);
-			clearRefreshCookie(res);
-			throw new UnauthorizedException(Messages.SESSION_EXPIRED);
-		}
-
-		setRefreshCookie(res, rotated.token);
-		return { ...member, accessToken: await this.authService.createAccessToken(member) } as Member;
-	}
-
-	/** This device only: its refresh session and its current access token. */
-	public async logout(authMember: AuthMember, req: Request, res: Response): Promise<boolean> {
-		const token = readRefreshCookie(req);
-		if (token) await this.sessionService.revoke(token);
-		await this.authService.revokeAccessToken(authMember.jti, authMember.exp);
-		clearRefreshCookie(res);
-		return true;
-	}
+	/* ───────────────────────── password ───────────────────────── */
 
 	/**
 	 * Every other device is signed out; this one gets a fresh access token and keeps
@@ -236,13 +185,8 @@ export class MemberService {
 			.lean()
 			.exec();
 
-		await this.sessionService.revokeAll(member._id as any, readRefreshCookie(req));
-		await this.authService.revokeAllAccessTokens(member._id);
-
-		return {
-			...updated,
-			accessToken: await this.authService.createAccessToken(updated as any),
-		} as Member;
+		await this.authService.endAllSessions(member._id, req);
+		return await this.authService.withAccessToken(updated as T);
 	}
 
 	/* ───────────────────────── own profile ───────────────────────── */
@@ -322,10 +266,7 @@ export class MemberService {
 			.exec();
 		if (!member) throw new InternalServerErrorException(Messages.UPDATE_FAILED);
 
-		if (input.memberStatus !== MemberStatus.ACTIVE) {
-			await this.sessionService.revokeAll(_id);
-			await this.authService.revokeAllAccessTokens(_id);
-		}
+		if (input.memberStatus !== MemberStatus.ACTIVE) await this.authService.endAllSessions(_id);
 		return member as Member;
 	}
 }
