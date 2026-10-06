@@ -105,3 +105,17 @@ unrelated files on every run. Here the two halves are explicit: `lint:check` nev
 ## Git
 
 `main` ← `develop` ← `feature/<module>`. Conventional commits (feat/fix/refactor/test/chore).
+`feat` is for something a patient, clinic, doctor or admin can notice; developer tooling is `chore`.
+
+### Before every commit
+
+1. Stage files by name. Never a blind `git add -A` / `git add .`.
+2. Read `git diff --cached` in full.
+3. Scan what is staged for secrets — it must print nothing:
+   ```bash
+   git diff --cached | grep -nE "mongodb(\+srv)?://[^<]+:[^<@]+@|SECRET_TOKEN=[^ .{][^ ]{7,}|rediss?://[^ ]+:[^ ]+@"
+   ```
+
+`.env.example` is the committed template and only ever holds placeholders (`<user>:<password>`).
+Real values live in `.env`, which is git-ignored. On 2026-10-06 real Atlas credentials reached
+`.env.example` through a blind `git add -A` and had to be scrubbed from history before the first push.
