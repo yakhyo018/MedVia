@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-06, after M1 merged into `develop`._
+_Last updated: 2026-10-06, M2 built on `feature/clinic`, waiting for the user's Postman run._
 
 ## The project
 
@@ -24,7 +24,7 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | --- | --- | --- |
 | M0 | Skeleton — monorepo, Atlas, Redis, GraphQL, guards | ✅ done |
 | M1 | Member + Auth — `members`, `sessions`, refresh rotation, admin | ✅ done, merged (`2892148`) |
-| **M2** | **Clinic — AGENT CRUD, admin verification, list/detail, follow/like/view** | **next** |
+| **M2** | **Clinic — AGENT CRUD, admin verification, list/detail, follow/like/view** | **built on `feature/clinic`; Newman 237/237 green; user's Postman run pending** |
 | M3 | Doctor — accounts created by the clinic | |
 | M4 | Treatment — `doctorIds[]` | |
 | M5 | Slot + Booking — atomic hold, transactions, state machine, consent | |
@@ -34,19 +34,26 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
 
-## Next step: M2 — start with the `clinics` collection review
+## Next step
 
-Bring these into the review:
+1. **The user runs `M2 — Clinic` in Postman** (or `npm run test:api -- M2`). After it passes,
+   `feature/clinic` merges into `develop` with `--no-ff`.
+2. **M3 — Doctor**, starting with the `doctors` collection review. Bring in:
+   - `doctorFollowers` on `doctors` — `FollowService` already accepts DOCTOR targets; it needs the
+     `$inc`, like the AGENT branch.
+   - `LikeGroup.DOCTOR` / `ViewGroup.DOCTOR` and the Doctors tabs of Favorites / Recently Visited.
+   - Doctor accounts are created by the clinic: `MemberService.createEmailMember(…, session)` +
+     the doctor row in one transaction, `memberMustChangePassword: true`.
+   - `clinicDoctors` was dropped in M2 — the detail page counts the doctor list it loads.
 
-- **Follow target model.** The mockup lets patients follow community authors (USER), not only
-  doctors and clinics (`PatientFollowing` tab "Community authors", Follow button on articles).
-  The ER model allows only DOCTOR / AGENT. Decide before writing `follows`.
-- **`follows` index** `{ followerId: 1, createdAt: -1 }`. Nestar has only
-  `{ followingId, followerId }` unique, so its "my followings" query is a COLLSCAN (prefix rule).
-  Show it with `explain()` before and after.
-- **Cache the clinic list** — first real use of `CacheService`; handle stampede and penetration.
-- **Atlas Search** for clinic / treatment search (decided over Elasticsearch).
-- M3 note: add `doctorFollowers` to `doctors` (clinics have `clinicFollowers`).
+## What M2 left for later
+
+- **Atlas Search index** is not created yet. Create `clinic_search` in Atlas from
+  `docs/atlas-search/clinics.json`, then set `ATLAS_SEARCH_INDEX=clinic_search` in `.env`.
+  Until then the clinic text search is an escaped regex on the two names.
+- **ER model** (`~/Desktop/MedVia-design/er/model.js`) still shows the pre-review `clinics` and
+  `follows`. The schemas in `apps/medvia-api/src/schemas` are the truth.
+- `clinicFollowers` and the follow row are two writes; a recount belongs in the M9 batch.
 
 ## Open items
 

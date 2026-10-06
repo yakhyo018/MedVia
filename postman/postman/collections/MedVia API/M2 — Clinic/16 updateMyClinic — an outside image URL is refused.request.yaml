@@ -1,0 +1,32 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation UpdateMyClinic($input: ClinicUpdate!) {
+        updateMyClinic(input: $input) {
+          _id clinicStatus clinicName clinicImages clinicLogo clinicLangs clinicInterpreterLangs clinicDesc
+          clinicHours { day open close closed }
+          clinicLocation { type coordinates }
+        }
+      }
+    variables: |-
+      {
+        "input": { "clinicImages": ["https://tracker.example.com/pixel.png"] }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('refused: clinicImages must be paths returned by /upload/image', () => pm.expect(msg).to.include("clinicImages must be paths returned by /upload/image"));
+    language: text/javascript
+order: 16000

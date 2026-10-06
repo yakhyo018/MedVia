@@ -42,6 +42,6 @@ scripts:
       const gql = body.data || {};
       const err = (body.errors && body.errors[0]) || {};
       const msg = err.message || '';
-      pm.test('refused, message mentions "memberType must be USER or AGENT"', () => pm.expect(msg).to.include('memberType must be USER or AGENT'));
+      pm.test('refused, message mentions "memberType must be USER"', () => pm.expect(msg).to.include('memberType must be USER'));
     language: text/javascript
 order: 3000

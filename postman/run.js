@@ -50,6 +50,16 @@ function toNewmanRequest(name, spec) {
 		request.body = { mode: 'graphql', graphql: { query, variables: vars } };
 	} else if (spec.body?.type === 'json') {
 		request.body = { mode: 'raw', raw: spec.body.content, options: { raw: { language: 'json' } } };
+	} else if (spec.body?.type === 'formdata') {
+		// File paths are relative to postman/, e.g. fixtures/clinic-photo.png.
+		request.body = {
+			mode: 'formdata',
+			formdata: (spec.body.content || []).map((field) =>
+				field.type === 'file'
+					? { key: field.key, type: 'file', src: path.join(POSTMAN_DIR, field.src) }
+					: { key: field.key, type: 'text', value: field.value },
+			),
+		};
 	}
 
 	const event = (spec.scripts || []).map((script) => ({

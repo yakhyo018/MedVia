@@ -30,7 +30,9 @@ export const PHONE_PATTERN = /^\+?[0-9][0-9 ()-]{5,19}$/;
 
 @InputType()
 export class MemberInput {
-	@IsIn(SIGNUP_MEMBER_TYPES, { message: 'memberType must be USER or AGENT' })
+	@IsIn(SIGNUP_MEMBER_TYPES, {
+		message: 'memberType must be USER; clinics sign up with signupClinic',
+	})
 	@Field(() => MemberType)
 	memberType!: MemberType;
 
@@ -84,7 +86,9 @@ export class GoogleLoginInput {
 
 	/** Used only when this Google account signs in for the first time. */
 	@IsOptional()
-	@IsIn(SIGNUP_MEMBER_TYPES, { message: 'memberType must be USER or AGENT' })
+	@IsIn(SIGNUP_MEMBER_TYPES, {
+		message: 'memberType must be USER; clinics sign up with signupClinic',
+	})
 	@Field(() => MemberType, { nullable: true })
 	memberType?: MemberType;
 

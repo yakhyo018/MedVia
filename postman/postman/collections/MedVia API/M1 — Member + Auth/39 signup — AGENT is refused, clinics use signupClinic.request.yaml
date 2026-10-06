@@ -42,7 +42,8 @@ scripts:
       const gql = body.data || {};
       const err = (body.errors && body.errors[0]) || {};
       const msg = err.message || '';
-      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
-      pm.test('role AGENT', () => pm.expect((gql.signup || {}).memberType).to.eql('AGENT'));
+      // Since M2 a clinic account is created only together with its clinic (signupClinic).
+      pm.test('refused: clinics sign up with signupClinic', () => pm.expect(msg).to.include('clinics sign up with signupClinic'));
+      pm.test('no account created', () => pm.expect(gql.signup).to.not.be.ok);
     language: text/javascript
 order: 39000

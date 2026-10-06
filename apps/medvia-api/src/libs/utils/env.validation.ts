@@ -30,6 +30,10 @@ export const envValidationSchema = Joi.object({
 		.optional(),
 	ADMIN_PASSWORD: Joi.string().allow('').optional(),
 
+	// Name of the Atlas Search index on `clinics`. Empty: clinic text search falls back to
+	// a regex on the names (docs/atlas-search/clinics.json describes the index).
+	ATLAS_SEARCH_INDEX: Joi.string().allow('').optional(),
+
 	// Added in later milestones; optional for now.
 	GOOGLE_CLIENT_ID: Joi.string().allow('').optional(),
 	MEDICAL_ENC_KEY: Joi.string().allow('').optional(),

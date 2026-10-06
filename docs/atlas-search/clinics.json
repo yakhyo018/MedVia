@@ -1,0 +1,14 @@
+{
+	"name": "clinic_search",
+	"collection": "clinics",
+	"definition": {
+		"mappings": {
+			"dynamic": false,
+			"fields": {
+				"clinicName": { "type": "string", "analyzer": "lucene.standard" },
+				"clinicNameKo": { "type": "string", "analyzer": "lucene.nori" },
+				"clinicDesc": { "type": "string", "analyzer": "lucene.english" }
+			}
+		}
+	}
+}

@@ -6,7 +6,7 @@ import {
 	UnauthorizedException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, ObjectId } from 'mongoose';
+import { ClientSession, Model, ObjectId } from 'mongoose';
 import type { Request, Response } from 'express';
 import { Member, Members } from '../../libs/dto/member/member';
 import {
@@ -26,6 +26,16 @@ import { GoogleService } from '../auth/google.service';
 
 const DUPLICATE_KEY = 11000;
 
+export interface EmailMemberFields {
+	memberType: MemberType;
+	memberEmail: string;
+	memberPassword: string;
+	memberFullName: string;
+	memberPhone?: string;
+	memberCountry?: string;
+	memberLang?: Language;
+}
+
 @Injectable()
 export class MemberService {
 	constructor(
@@ -38,24 +48,37 @@ export class MemberService {
 
 	public async signup(input: MemberInput, req: Request, res: Response): Promise<Member> {
 		// termsAccepted is pulled out so it is not stored; @Equals(true) already enforced it.
-		const { termsAccepted, memberPassword, ...profile } = input;
+		const { termsAccepted, ...fields } = input;
+		const member = await this.createEmailMember(fields);
+		return await this.authService.startSession(member, req, res);
+	}
+
+	/**
+	 * Creates an email/password account. With a session it joins the caller's transaction —
+	 * signupClinic creates the AGENT account and its clinic together or not at all.
+	 */
+	public async createEmailMember(fields: EmailMemberFields, session?: ClientSession): Promise<T> {
+		const { memberPassword, ...profile } = fields;
 		const now = new Date();
 
-		let member: T;
 		try {
-			member = await this.memberModel.create({
-				...profile,
-				memberAuthType: MemberAuthType.EMAIL,
-				memberPassword: await this.authService.hashPassword(memberPassword),
-				memberTermsAt: now,
-				memberLastLoginAt: now,
-			});
+			const [member] = await this.memberModel.create(
+				[
+					{
+						...profile,
+						memberAuthType: MemberAuthType.EMAIL,
+						memberPassword: await this.authService.hashPassword(memberPassword),
+						memberTermsAt: now,
+						memberLastLoginAt: now,
+					},
+				],
+				{ session },
+			);
+			return member.toObject();
 		} catch (err: any) {
 			if (err?.code === DUPLICATE_KEY) throw new BadRequestException(Messages.USED_EMAIL);
 			throw new BadRequestException(Messages.CREATE_FAILED);
 		}
-
-		return await this.authService.startSession(member.toObject(), req, res);
 	}
 
 	/**

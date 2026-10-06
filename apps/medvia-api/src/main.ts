@@ -21,6 +21,9 @@ async function bootstrap() {
 	app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 	app.useGlobalInterceptors(new LoggingInterceptor());
 
+	// Uploaded images are public files: clinic photos and avatars, nothing private.
+	app.useStaticAssets('uploads', { prefix: '/uploads' });
+
 	// Only our frontend may send credentialed requests. Nestar's `origin: true` reflected
 	// any origin back, harmless without cookies — with a refresh cookie it would let any
 	// website call the API as the signed-in user and read the answer.
