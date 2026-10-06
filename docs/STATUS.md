@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-06, M2 built on `feature/clinic`, waiting for the user's Postman run._
+_Last updated: 2026-10-06, after M2 merged into `develop`._
 
 ## The project
 
@@ -11,7 +11,7 @@ MedVia — portfolio project for Korean healthtech job applications. Foreign pat
 find verified Seoul clinics and book treatments in their own language. Not a business: no SMS, no
 outgoing email, no payments, no HIRA. The sample patient persona is **Feride Karimova**.
 
-- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 + M1
+- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 + M1 + M2
 - Design and data model: `~/Desktop/MedVia-design` — ER source `er/model.js`, mockup generators `source/`
 - ER model (24 collections): https://claude.ai/artifact/LiWJjgdBPcaLSjdGkefKcA
 - Clickable prototype (61 screens): https://claude.ai/artifact/Js6b1j85jbvBrxCSpNRiWt
@@ -24,8 +24,8 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | --- | --- | --- |
 | M0 | Skeleton — monorepo, Atlas, Redis, GraphQL, guards | ✅ done |
 | M1 | Member + Auth — `members`, `sessions`, refresh rotation, admin | ✅ done, merged (`2892148`) |
-| **M2** | **Clinic — AGENT CRUD, admin verification, list/detail, follow/like/view** | **built on `feature/clinic`; Newman 237/237 green; user's Postman run pending** |
-| M3 | Doctor — accounts created by the clinic | |
+| M2 | Clinic — AGENT CRUD, admin verification, list/detail, follow/like/view | ✅ done, merged (`eb6a1fa`) |
+| **M3** | **Doctor — accounts created by the clinic** | **next** |
 | M4 | Treatment — `doctorIds[]` | |
 | M5 | Slot + Booking — atomic hold, transactions, state machine, consent | |
 | M6 | Review — only after a COMPLETED booking | |
@@ -34,17 +34,16 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
 
-## Next step
+## Next step: M3 — start with the `doctors` collection review
 
-1. **The user runs `M2 — Clinic` in Postman** (or `npm run test:api -- M2`). After it passes,
-   `feature/clinic` merges into `develop` with `--no-ff`.
-2. **M3 — Doctor**, starting with the `doctors` collection review. Bring in:
-   - `doctorFollowers` on `doctors` — `FollowService` already accepts DOCTOR targets; it needs the
-     `$inc`, like the AGENT branch.
-   - `LikeGroup.DOCTOR` / `ViewGroup.DOCTOR` and the Doctors tabs of Favorites / Recently Visited.
-   - Doctor accounts are created by the clinic: `MemberService.createEmailMember(…, session)` +
-     the doctor row in one transaction, `memberMustChangePassword: true`.
-   - `clinicDoctors` was dropped in M2 — the detail page counts the doctor list it loads.
+Bring these into the review:
+
+- `doctorFollowers` on `doctors` — `FollowService` already accepts DOCTOR targets; it needs the
+  `$inc`, like the AGENT branch.
+- `LikeGroup.DOCTOR` / `ViewGroup.DOCTOR` and the Doctors tabs of Favorites / Recently Visited.
+- Doctor accounts are created by the clinic: `MemberService.createEmailMember(…, session)` +
+  the doctor row in one transaction, `memberMustChangePassword: true`.
+- `clinicDoctors` was dropped in M2 — the detail page counts the doctor list it loads.
 
 ## What M2 left for later
 
@@ -62,7 +61,7 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 - `gh` CLI is not logged in, so milestones merge locally (`--no-ff`) instead of through PRs.
 - Postman writes run-time variables into `postman/postman/environments/MedVia Local.environment.yaml`.
   Check it before committing — it must never carry tokens or `adminPassword`.
-- Local branch `feature/member` is fully merged and can be deleted.
+- Local branches `feature/member` and `feature/clinic` are fully merged and can be deleted.
 - Deploy constraint: frontend and API on one site (`medvia.uz` + `api.medvia.uz`) — Safari blocks
   third-party cookies, and the refresh token is a cookie.
 
