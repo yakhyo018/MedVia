@@ -1,0 +1,20 @@
+$kind: http-request
+url: '{{baseUrl}}/upload/image?target=clinic'
+method: POST
+headers:
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: formdata
+  content:
+    - key: file
+      type: file
+      src: fixtures/not-an-image.png
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json() || {};
+      const msg = Array.isArray(body.message) ? body.message.join('; ') : (body.message || '');
+      pm.test('status 400', () => pm.response.to.have.status(400));
+      pm.test('refused by the file signature, not the name', () => pm.expect(msg).to.eql('Please provide jpg, jpeg or png images!'));
+    language: text/javascript
+order: 13000

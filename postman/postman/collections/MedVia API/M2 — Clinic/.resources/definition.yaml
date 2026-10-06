@@ -1,0 +1,3 @@
+$kind: collection
+description: Clinic signup (account + clinic in one transaction), profile edit with locked fields, image upload (REST), admin verification (request changes, resubmit, approve, suspend, restore) with audit log, public list and detail (cache), like, recently visited, follow and My Followings tabs. Self-contained — creates its own clinic and patient. Needs ADMIN_EMAIL / ADMIN_PASSWORD in .env and `npm run seed:admin`.
+order: 3000

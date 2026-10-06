@@ -1,0 +1,45 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      query GetClinics($input: ClinicsInquiry!) {
+        getClinics(input: $input) {
+          list { _id clinicName clinicDistrict clinicLangs clinicInterpreterLangs clinicLikes }
+          metaCounter { total }
+        }
+      }
+    variables: |-
+      {
+        "input": {
+          "page": 1,
+          "limit": 10,
+          "search": {
+            "text": "{{clinicName}}",
+            "specialty": "DERMATOLOGY",
+            "districts": ["GANGNAM", "SEOCHO"],
+            "langs": ["UZ"],
+            "interpreter": true
+          }
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const page = gql.getClinics || {};
+      const c = (page.list || [])[0] || {};
+      // With Atlas Search, clinics from earlier runs also match "postman glow"; the one with
+      // the unique timestamp scores highest. With the regex fallback it is the only match.
+      pm.test('the approved clinic is the best match', () => pm.expect(c._id).to.eql(pm.environment.get('clinicId')));
+    language: text/javascript
+order: 27000

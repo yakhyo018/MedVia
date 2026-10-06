@@ -1,0 +1,52 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation UpdateMyClinic($input: ClinicUpdate!) {
+        updateMyClinic(input: $input) {
+          _id clinicStatus clinicName clinicImages clinicLogo clinicLangs clinicInterpreterLangs clinicDesc
+          clinicHours { day open close closed }
+          clinicLocation { type coordinates }
+        }
+      }
+    variables: |-
+      {
+        "input": {
+          "clinicImages": ["{{clinicImage}}"],
+          "clinicLogo": "{{clinicImage}}",
+          "clinicLangs": ["KO", "EN", "RU", "UZ"],
+          "clinicInterpreterLangs": ["RU", "UZ"],
+          "clinicDesc": "A dermatology clinic near Sinnonhyeon focused on pigmentation and acne scars.",
+          "clinicHours": [
+            { "day": 1, "open": "10:00", "close": "19:00" },
+            { "day": 0, "closed": true }
+          ],
+          "clinicLocation": { "lng": 127.0254, "lat": 37.5045 }
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const c = gql.updateMyClinic || {};
+      pm.test('still CHANGES_REQUESTED until resubmitted', () => pm.expect(c.clinicStatus).to.eql('CHANGES_REQUESTED'));
+      pm.test('photo stored', () => pm.expect(c.clinicImages).to.eql([pm.environment.get('clinicImage')]));
+      pm.test('languages stored', () => pm.expect(c.clinicLangs).to.eql(['KO', 'EN', 'RU', 'UZ']));
+      pm.test('hours sorted by day, closed day has no times', () => pm.expect(c.clinicHours).to.eql([
+        { day: 0, open: null, close: null, closed: true },
+        { day: 1, open: '10:00', close: '19:00', closed: false },
+      ]));
+      pm.test('pin stored as GeoJSON [lng, lat]', () => pm.expect(c.clinicLocation).to.eql({ type: 'Point', coordinates: [127.0254, 37.5045] }));
+    language: text/javascript
+order: 18000

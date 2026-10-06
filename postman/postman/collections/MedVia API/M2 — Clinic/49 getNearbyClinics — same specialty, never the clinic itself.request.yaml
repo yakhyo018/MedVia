@@ -1,0 +1,29 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      query GetNearbyClinics($clinicId: String!) {
+        getNearbyClinics(clinicId: $clinicId, limit: 3) { _id clinicSpecialty }
+      }
+    variables: |-
+      { "clinicId": "{{clinicId}}" }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const list = gql.getNearbyClinics || [];
+      pm.test('at most 3', () => pm.expect(list.length).to.be.at.most(3));
+      pm.test('not itself', () => pm.expect(list.map((c) => c._id)).to.not.include(pm.environment.get('clinicId')));
+      pm.test('same specialty', () => pm.expect(list.every((c) => c.clinicSpecialty === 'DERMATOLOGY')).to.be.true);
+    language: text/javascript
+order: 49000

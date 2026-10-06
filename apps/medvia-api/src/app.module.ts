@@ -23,8 +23,11 @@ import { T } from './libs/types/common';
 			formatError: (error: T) => {
 				const res = error?.extensions?.originalError || error?.extensions?.response;
 				const rawMsg = res?.message || error?.message;
+				// @nestjs/apollo maps only 400, 401, 403 and 422 to codes; a NotFoundException
+				// would otherwise reach the client as INTERNAL_SERVER_ERROR.
+				const code = res?.statusCode === 404 ? 'NOT_FOUND' : error?.extensions?.code;
 				const formatted = {
-					extensions: { code: error?.extensions?.code },
+					extensions: { code },
 					message: Array.isArray(rawMsg) ? rawMsg.join('; ') : rawMsg,
 				};
 				console.log('GRAPHQL GLOBAL ERR:', formatted);

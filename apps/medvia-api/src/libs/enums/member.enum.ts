@@ -8,8 +8,14 @@ export enum MemberType {
 }
 registerEnumType(MemberType, { name: 'MemberType' });
 
-/** The only roles a visitor may pick when signing up. */
-export const SIGNUP_MEMBER_TYPES = [MemberType.USER, MemberType.AGENT];
+/**
+ * The only role the generic signup creates. A clinic account comes with its clinic
+ * through `signupClinic`, in one transaction — never as an AGENT without a clinic.
+ */
+export const SIGNUP_MEMBER_TYPES = [MemberType.USER];
+
+/** Who can be followed: community authors, doctors and clinics — never an admin. */
+export const FOLLOWABLE_MEMBER_TYPES = [MemberType.USER, MemberType.DOCTOR, MemberType.AGENT];
 
 export enum MemberStatus {
 	ACTIVE = 'ACTIVE',

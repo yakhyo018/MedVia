@@ -1,0 +1,30 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query GetClinic($clinicId: String!) {
+        getClinic(clinicId: $clinicId) { _id clinicName clinicStatus clinicLikes clinicFollowers memberId meLiked meFollowed }
+      }
+    variables: |-
+      { "clinicId": "{{clinicId}}" }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const c = gql.getClinic || {};
+      pm.test('the clinic page', () => pm.expect(c._id).to.eql(pm.environment.get('clinicId')));
+      pm.test('not liked yet', () => pm.expect(c.meLiked).to.eql(false));
+      pm.test('not followed yet', () => pm.expect(c.meFollowed).to.eql(false));
+    language: text/javascript
+order: 31000

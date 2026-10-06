@@ -1,0 +1,35 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation ReviewClinic($input: ClinicReviewInput!) {
+        reviewClinic(input: $input) { _id clinicStatus clinicReviewNote verifiedAt }
+      }
+    variables: |-
+      {
+        "input": {
+          "clinicId": "{{clinicId}}",
+          "decision": "APPROVE"
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const c = gql.reviewClinic || {};
+      pm.test('status ACTIVE', () => pm.expect(c.clinicStatus).to.eql('ACTIVE'));
+      pm.test('verifiedAt set', () => pm.expect(Date.parse(c.verifiedAt)).to.not.be.NaN);
+      pm.test('old review message cleared', () => pm.expect(c.clinicReviewNote).to.be.null);
+    language: text/javascript
+order: 23000

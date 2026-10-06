@@ -1,0 +1,33 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation UpdateMyClinic($input: ClinicUpdate!) {
+        updateMyClinic(input: $input) {
+          _id clinicStatus clinicName clinicImages clinicLogo clinicLangs clinicInterpreterLangs clinicDesc
+          clinicHours { day open close closed }
+          clinicLocation { type coordinates }
+        }
+      }
+    variables: |-
+      {
+        "input": { "clinicName": "Renamed Clinic" }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('refused: changed through support', () => pm.expect(msg).to.include("changed through support"));
+      pm.test('code BAD_REQUEST', () => pm.expect(code).to.eql('BAD_REQUEST'));
+    language: text/javascript
+order: 25000
