@@ -69,12 +69,24 @@ Every milestone (M1…M10) passes two gates set by the user:
    scope. The user may cut fields or whole collections and will have questions. No schema, DTO or
    service code until the user says yes. The ER model (`MedVia-design/er/model.js`) is the starting
    point, not a contract.
-2. **Postman check — before the milestone closes.** Add a folder for the milestone to
-   `postman/MedVia.postman_collection.json`: every query and mutation, the happy path and the
-   failure paths (no token, wrong role, invalid input), each with test scripts. The user runs it.
-   Only after it passes does `feature/<module>` merge into `develop`.
+2. **Postman check — before the milestone closes.** Add a folder `Mx — <Name>` for the milestone
+   under `postman/postman/collections/MedVia API/`: every query and mutation, the happy path and
+   the failure paths (no token, wrong role, invalid input), each with test scripts. The user runs
+   it. Only after it passes does `feature/<module>` merge into `develop`.
 
 Order inside a milestone: review → build → explain + LEARN.md → Postman folder → user runs it → merge.
+
+## Postman
+
+- Postman 12 runs in git-native mode: one `*.request.yaml` file per request, plus a
+  `.resources/definition.yaml` per folder (holds `order` and `description`). Write requests in this
+  format directly. Never hand the user a v2.1 JSON to import — the importer drops GraphQL queries.
+- GraphQL body: `body: { type: graphql, content: { query: |- ... } }`.
+- Test scripts must never throw. Guard every read: `const h = (body.data && body.data.health) || {}`,
+  so a broken response reports a failed test instead of a script error. Put the server's own error
+  text in the assertion message: `pm.expect(body.errors, JSON.stringify(body.errors))`.
+- `npm run test:api` runs every folder from the terminal through Newman; `npm run test:api -- M1`
+  runs one milestone. It reads the same YAML files Postman edits — there is no second copy.
 
 ## Validation
 
@@ -83,6 +95,7 @@ npx tsc -p apps/medvia-api/tsconfig.app.json --noEmit
 npx tsc -p apps/medvia-batch/tsconfig.app.json --noEmit
 npm run build
 npm run lint:check
+npm run test:api        # needs the API running: npm run start:dev
 ```
 
 There is no `npm run lint` script on purpose. The Nestar version carried `--fix` and rewrote

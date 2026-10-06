@@ -1,0 +1,2 @@
+$kind: collection
+description: One folder per milestone. Select the 'MedVia Local' environment, start the API with `npm run start:dev`, then run a folder with the Collection Runner. Every request carries test scripts; a milestone is closed only when its folder passes.

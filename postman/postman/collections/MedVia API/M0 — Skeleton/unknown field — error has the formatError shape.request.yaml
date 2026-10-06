@@ -1,0 +1,26 @@
+$kind: http-request
+url: "{{baseUrl}}/graphql"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      query UnknownField {
+        doesNotExist
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const e = (body.errors && body.errors[0]) || {};
+      const ext = e.extensions || {};
+
+      pm.test('returns errors', () => pm.expect(body.errors).to.be.an('array').that.is.not.empty);
+      pm.test('error has a message string', () => pm.expect(e.message).to.be.a('string'));
+      pm.test('error is a validation failure, not an empty query', () =>
+        pm.expect(ext.code, e.message).to.eql('GRAPHQL_VALIDATION_FAILED'));
+      pm.test('no stack trace leaks to the client', () => pm.expect(ext.stacktrace).to.be.undefined);
+    language: text/javascript
+order: 2000

@@ -1,0 +1,10 @@
+$kind: http-request
+url: "{{baseUrl}}/"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('welcome text', () => pm.expect(pm.response.text()).to.include('MedVia API'));
+    language: text/javascript
+order: 3000

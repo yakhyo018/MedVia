@@ -1,0 +1,32 @@
+$kind: http-request
+url: "{{baseUrl}}/graphql"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      query Health {
+        health {
+          status
+          mongo
+          redis
+          time
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const h = (body.data && body.data.health) || {};
+
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('no GraphQL errors', () =>
+        pm.expect(body.errors, JSON.stringify(body.errors)).to.be.undefined);
+      pm.test('status is ok', () => pm.expect(h.status).to.eql('ok'));
+      pm.test('mongo is connected', () => pm.expect(h.mongo).to.eql('connected'));
+      pm.test('redis answers PONG', () => pm.expect(h.redis).to.eql('PONG'));
+      pm.test('time is a valid date', () => pm.expect(Date.parse(h.time)).to.not.be.NaN);
+    language: text/javascript
+order: 1000
