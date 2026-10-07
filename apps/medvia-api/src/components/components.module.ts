@@ -8,6 +8,7 @@ import { UploadModule } from './upload/upload.module';
 import { DoctorModule } from './doctor/doctor.module';
 import { TreatmentModule } from './treatment/treatment.module';
 import { ViewModule } from './view/view.module';
+import { BookingModule } from './booking/booking.module';
 
 @Module({
 	imports: [
@@ -16,6 +17,7 @@ import { ViewModule } from './view/view.module';
 		ClinicModule,
 		DoctorModule,
 		TreatmentModule,
+		BookingModule,
 		FollowModule,
 		ViewModule,
 		AuditLogModule,

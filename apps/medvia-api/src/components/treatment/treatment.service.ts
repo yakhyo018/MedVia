@@ -19,6 +19,11 @@ import { shapeIntoMongoObjectId } from '../../libs/config';
 import { ClinicService } from '../clinic/clinic.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { planLiveEdit } from './treatment.rules';
+import { seoulMonthRange } from '../booking/booking.rules';
+import { BookingStatus } from '../../libs/enums/booking.enum';
+
+/** "Bookings this month": visits the clinic confirmed, whether they happened yet or not. */
+const MONTH_COUNTED = [BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.NO_SHOW];
 
 /** Never approved yet: every edit applies at once, the treatment is still under review. */
 const NEVER_LIVE = [TreatmentStatus.PENDING, TreatmentStatus.CHANGES_REQUESTED];
@@ -192,14 +197,42 @@ export class TreatmentService {
 		return await this.withDoctors(treatment, false);
 	}
 
-	/** The clinic's table: every treatment except deleted ones, with drafts and all doctors. */
+	/**
+	 * The clinic's table: every treatment except deleted ones, with drafts and all doctors, and
+	 * the confirmed visits of this Seoul month. Counted, not stored: a counter would have to
+	 * move on confirm, cancel and every other status change, and would drift.
+	 */
 	public async getMyClinicTreatments(agentId: ObjectId): Promise<Treatment[]> {
 		const clinic = await this.ownClinic(agentId);
+		const month = seoulMonthRange(new Date());
 		return await this.treatmentModel
 			.aggregate([
 				{ $match: { clinicId: clinic._id, treatmentStatus: { $ne: TreatmentStatus.DELETE } } },
 				{ $sort: { createdAt: 1 } },
 				this.lookupDoctors(false),
+				{
+					$lookup: {
+						from: 'bookings',
+						localField: '_id',
+						foreignField: 'treatmentId',
+						pipeline: [
+							{
+								$match: {
+									bookingDate: { $gte: month.from, $lt: month.to },
+									bookingStatus: { $in: MONTH_COUNTED },
+								},
+							},
+							{ $count: 'total' },
+						],
+						as: 'monthBookings',
+					},
+				},
+				{
+					$addFields: {
+						treatmentBookingsMonth: { $ifNull: [{ $first: '$monthBookings.total' }, 0] },
+					},
+				},
+				{ $project: { monthBookings: 0 } },
 			])
 			.exec();
 	}

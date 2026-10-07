@@ -101,6 +101,10 @@ export class Treatment {
 	/** Filled for the admin queue. */
 	@Field(() => Clinic, { nullable: true })
 	clinicData?: Clinic;
+
+	/** The clinic's own table only: confirmed visits in this Seoul month. */
+	@Field(() => Int, { nullable: true })
+	treatmentBookingsMonth?: number;
 }
 
 @ObjectType()

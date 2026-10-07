@@ -34,7 +34,10 @@ export const envValidationSchema = Joi.object({
 	// a regex on the names (docs/atlas-search/clinics.json describes the index).
 	ATLAS_SEARCH_INDEX: Joi.string().allow('').optional(),
 
+	// AES-256 key for the booking questionnaire: 32 random bytes, base64 (44 characters).
+	// `openssl rand -base64 32`. Losing it makes every stored questionnaire unreadable.
+	MEDICAL_ENC_KEY: Joi.string().base64().length(44).required(),
+
 	// Added in later milestones; optional for now.
 	GOOGLE_CLIENT_ID: Joi.string().allow('').optional(),
-	MEDICAL_ENC_KEY: Joi.string().allow('').optional(),
 }).unknown(true);

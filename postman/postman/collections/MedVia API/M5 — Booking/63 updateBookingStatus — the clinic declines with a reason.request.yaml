@@ -1,0 +1,26 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation U($input: BookingStatusUpdate!) { updateBookingStatus(input: $input) { _id bookingCode bookingStatus bookingDate bookingPrice bookingLang bookingInterpreter bookingDeclineReason cancelledBy respondDeadline slotIds patientName bookingHistory { status reason } bookingConsents { consentType agreed version } bookingQuestionnaire { originalLang answers { question answer } } clinicData { clinicName } doctorData { doctorName } treatmentData { treatmentName } } }
+    variables: |-
+      { "input": { "bookingId": "{{bookingBId}}", "bookingStatus": "DECLINED", "reason": "Dr. Han is at a conference that day" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const b = gql.updateBookingStatus || {};
+      pm.test('DECLINED with the reason', () => pm.expect([b.bookingStatus, b.bookingDeclineReason]).to.eql(['DECLINED', 'Dr. Han is at a conference that day']));
+    language: text/javascript
+order: 63000

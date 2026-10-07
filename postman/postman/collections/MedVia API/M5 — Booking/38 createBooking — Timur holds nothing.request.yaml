@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patient2Token}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation CB($input: BookingCreateInput!) { createBooking(input: $input) { _id bookingCode bookingStatus bookingDate bookingPrice bookingLang bookingInterpreter bookingDeclineReason cancelledBy respondDeadline slotIds patientName bookingHistory { status reason } bookingConsents { consentType agreed version } bookingQuestionnaire { originalLang answers { question answer } } clinicData { clinicName } doctorData { doctorName } treatmentData { treatmentName } } }
+    variables: |-
+      { "input": { "treatmentId": "{{treatmentId}}", "doctorId": "{{doctorAId}}", "slotStart": "{{t1000}}", "bookingLang": "EN", "questionnaire": { "originalLang": "RU", "answers": [ { "question": "What would you like to treat?", "answer": "Пигментация на щеках" }, { "question": "Allergies or current medication", "answer": "Аллергия на пенициллин" } ] }, "consents": [ { "consentType": "SHARE_DATA", "agreed": true }, { "consentType": "BOOKING_TERMS", "agreed": true } ] } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test("refused: Your reserved time has expired", () => pm.expect(msg).to.include("Your reserved time has expired"));
+      pm.test('code BAD_REQUEST', () => pm.expect(code).to.eql('BAD_REQUEST'));
+    language: text/javascript
+order: 38000

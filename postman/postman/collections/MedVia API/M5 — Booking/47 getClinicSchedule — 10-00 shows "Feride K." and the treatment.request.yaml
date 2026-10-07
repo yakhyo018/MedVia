@@ -1,0 +1,28 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query S($input: ClinicScheduleInquiry!) { getClinicSchedule(input: $input) { _id slotStatus slotStart slotBlockReason doctorId bookingId bookingData { bookingCode bookingStatus patientName treatmentName } } }
+    variables: |-
+      { "input": { "dateFrom": "{{slotDate}}" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const s = (gql.getClinicSchedule || []).find((x) => x.slotStart === pm.environment.get('t1000')) || {};
+      const d = s.bookingData || {};
+      pm.test('HELD by the request', () => pm.expect([s.slotStatus, d.bookingStatus]).to.eql(['HELD', 'PENDING']));
+      pm.test('short patient name', () => pm.expect([d.patientName, d.treatmentName]).to.eql(['Feride K.', pm.environment.get('bTreatmentName')]));
+    language: text/javascript
+order: 47000

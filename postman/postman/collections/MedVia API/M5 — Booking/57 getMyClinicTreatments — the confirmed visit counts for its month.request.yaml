@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query { getMyClinicTreatments { _id treatmentBookingsMonth } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const t = (gql.getMyClinicTreatments || []).find((x) => x._id === pm.environment.get('treatmentId')) || {};
+      const expected = pm.environment.get('sameMonth') === 'true' ? 1 : 0;
+      pm.test('this month: ' + expected, () => pm.expect(t.treatmentBookingsMonth).to.eql(expected));
+    language: text/javascript
+order: 57000
