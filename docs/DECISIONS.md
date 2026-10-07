@@ -123,3 +123,13 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | `getClinicTreatments` is not cached. | One indexed query per page; caching needs invalidation on treatment, doctor and clinic changes. | More reads under heavy traffic. | Cache per clinic and doctor filter. |
 | `ClinicDecision` renamed `ReviewDecision` and shared by clinic and treatment review. | Same three admin buttons. | GraphQL enum name changed (no client depends on it yet). | A second identical enum. |
 | No likes or views for treatments. | There is no treatment page in the mockups. | — | Register a TREATMENT like handler. |
+
+## M4.1 — Unit tests
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| Use the Jest setup the Nest template already installed; no new package. | It was there since M0 with zero tests; `ts-jest` works with the project's `nodenext` config. | — | Vitest (would replace a working setup). |
+| Unit-test the rule-heavy code: draft/price rules, opening hours, display names, the cache's single-flight and miss sentinel, the like toggle and handler registry. | These have many input combinations that Postman covers slowly or not at all. | Service code that only reads and writes stays covered by Postman alone. | Unit-test every service with mocked models. |
+| Pure rules moved out of services (`treatment.rules.ts`, `clinic.rules.ts`), the clock passed in. | Test without a database or Nest; exact assertions. | Two places to look for treatment logic. | Test private methods through the service with mocks. |
+| In-memory fakes (Redis, Mongoose model) through Nest DI, not a mocking library. | Shows the DI payoff; the fake also records commands for assertions. | Fakes can drift from the real API. | `ioredis-mock`, `mongodb-memory-server` (new packages). |
+| Every new test checked against a deliberately broken feature before it was trusted. | M4 had a test that passed for the wrong reason. | Manual, not automated. | Stryker mutation testing. |

@@ -142,16 +142,31 @@ MedVia has no `lint` script. `lint:check` never writes; `lint:fix` writes and is
 A `.prettierrc` matching the existing tab style was added so the formatter and the committed code
 agree from the first commit — Nestar has none, which is why its baseline carries 68 lint errors.
 
-### Interview questions
+### Interview questions and answers
 
-1. Guards run before pipes. Name a concrete bug that the reverse order would cause.
-2. `MongooseModule.forRoot` is called once and `forFeature` many times. What breaks if you call
-   `forRoot` in each module instead?
-3. Why does `@Field(() => String)` need the arrow function rather than `@Field(String)`?
-4. Redis is in the stack from M0 but the slot lock stays in MongoDB. Defend that split.
-5. `WithoutGuard` lets unauthenticated requests through. How is that different from no guard at all?
-6. The health query reports `degraded` instead of throwing when Redis is down. Why is that the right
-   behaviour for a cache and the wrong behaviour for a database?
+**1. Guards run before pipes. Name a concrete bug that the reverse order would cause.**
+
+Guards first means an anonymous request is rejected before its input is touched. With pipes first, an unauthenticated caller could probe the input rules (which fields exist, which values are refused) and trigger any work a pipe does — transforming, parsing, or a pipe that loads data from the database — for free.
+
+**2. `MongooseModule.forRoot` is called once and `forFeature` many times. What breaks if you call `forRoot` in each module instead?**
+
+`forRoot` opens a connection pool. Calling it in every module opens one pool per module: many times the connections to Atlas (the free tier caps them), and models bound to different connections — a transaction session belongs to one connection, so writes across modules could no longer share a transaction.
+
+**3. Why does `@Field(() => String)` need the arrow function rather than `@Field(String)`?**
+
+Decorators run when the class is defined. The arrow function (a thunk) delays reading the type until the schema is built, so a type declared later in the file, or two types that reference each other (`Doctor` ↔ `Clinic`), still resolve. TypeScript also erases array and generic types at runtime, so `[String]` must be stated explicitly; using the thunk everywhere keeps it uniform.
+
+**4. Redis is in the stack from M0 but the slot lock stays in MongoDB. Defend that split.**
+
+Redis is a cache and a queue: if it loses data the site gets slower, not wrong. The slot hold must change together with the booking in one MongoDB transaction, which Redis cannot join — a crash between the two writes leaves them disagreeing. And Redis may evict or lose keys on restart; a lost lock is a double-booked patient.
+
+**5. `WithoutGuard` lets unauthenticated requests through. How is that different from no guard at all?**
+
+`WithoutGuard` still reads a token when one is sent, verifies it and attaches the member, so one resolver can serve guests and personalise for members (`meLiked`, recording a view). An invalid token is simply treated as a guest. With no guard at all, the resolver never knows who is asking.
+
+**6. The health query reports `degraded` instead of throwing when Redis is down. Why is that the right behaviour for a cache and the wrong behaviour for a database?**
+
+A cache is an optimisation: without Redis every answer is still correct, only slower, so the instance should keep serving and say `degraded`. The database is the source of truth: without it the instance cannot answer correctly, so its health check must fail and the load balancer must stop sending it traffic.
 
 ---
 
@@ -329,14 +344,31 @@ payoff of point 3 in section 8.
   but it only listens for SIGTERM / SIGINT when this is enabled. Without it, `RedisService.quit()`
   never ran on Ctrl+C or a container stop — the connection was cut, not closed.
 
-### Interview questions
+### Interview questions and answers
 
-1. Redis runs commands on one thread, yet handles thousands of clients. How?
-2. Why is `KEYS` dangerous in production while `SCAN` is fine, when both visit every key eventually?
-3. `SET slot:42 held NX EX 600` is atomic. Why is the slot lock still in MongoDB?
-4. What does `emitDecoratorMetadata` emit, and why can Nest not inject by interface?
-5. A hot cache key expires and the database spikes. Name the problem and two fixes.
-6. What breaks if `RedisService` is imported with `import type`?
+**1. Redis runs commands on one thread, yet handles thousands of clients. How?**
+
+One thread runs commands, but it never waits: an event loop (epoll / kqueue) multiplexes thousands of non-blocking sockets, and each command is a tiny in-memory operation measured in microseconds. The thread is always doing useful work instead of waiting on I/O.
+
+**2. Why is `KEYS` dangerous in production while `SCAN` is fine, when both visit every key eventually?**
+
+`KEYS` is one command that walks the whole keyspace; on the single command thread every other client waits until it ends. `SCAN` does a small batch per call and returns a cursor, so other commands run in between. The total work is similar — the difference is one long stall versus many short slices. (`SCAN` may return a key twice; callers must tolerate that.)
+
+**3. `SET slot:42 held NX EX 600` is atomic. Why is the slot lock still in MongoDB?**
+
+The `SET NX` is atomic, but the hold must be written in the same transaction as the booking, and Redis cannot take part in a MongoDB transaction. A crash between the two writes, a restart, or LRU eviction of the key would leave a slot that looks free while a booking holds it — a double-booked patient.
+
+**4. What does `emitDecoratorMetadata` emit, and why can Nest not inject by interface?**
+
+It emits `design:paramtypes`: the runtime classes of each constructor parameter, which Nest reads to know what to inject. An interface is erased at compile time, so nothing exists at runtime to point to — the metadata says `Object`. Interfaces need a token (`@Inject('NAME')`) instead.
+
+**5. A hot cache key expires and the database spikes. Name the problem and two fixes.**
+
+A cache stampede (thundering herd): many requests miss at once and all rebuild. Fixes: a single-flight lock so one request rebuilds and the others wait (`SET NX PX`, used in MedVia), and refreshing the key before it expires (early or probabilistic refresh); adding TTL jitter keeps many keys from expiring together.
+
+**6. What breaks if `RedisService` is imported with `import type`?**
+
+`import type` is erased, so `design:paramtypes` records `Object` instead of `RedisService`. It compiles, and then fails at boot: "Nest can't resolve dependencies of CacheService (?)".
 
 ---
 
@@ -473,21 +505,47 @@ works there.
 - **Postman's sandbox has a global named `data`.** `const data = ...` in a test script throws
   "Identifier has already been declared".
 
-### Interview questions
+### Interview questions and answers
 
-1. A JWT is "signed". Why is it still wrong to put the user's email in it?
-2. Why is a refresh token stored in `localStorage` worse than having no refresh token at all?
-3. Walk through how rotation exposes a stolen refresh token. Why does whoever comes second lose?
-4. Why does reuse detection need a grace window, and what does it cost?
-5. Revoking every token of a blocked user: what do you store, and why does that key expire after
-   15 minutes?
-6. Your login answers 70 ms faster for unknown emails. What did you leak, and how do you fix it?
-7. Why is a password longer than 72 bytes rejected instead of accepted?
-8. A Google user's email matches an existing password account. What must happen to that password,
-   and what attack does it prevent?
-9. The throttle is keyed by IP + email. What goes wrong with IP alone behind Nginx, and with IP
-   alone in an office?
-10. The suite caught a same-second bug in revocation. Why was `<=` not the fix?
+**1. A JWT is "signed". Why is it still wrong to put the user's email in it?**
+
+Signed is not encrypted: the payload is base64 that anyone holding the token can read — and tokens end up in logs, proxies and browser storage. Personal data in it also cannot be corrected or revoked until the token expires. MedVia's token carries only ids, role and times.
+
+**2. Why is a refresh token stored in `localStorage` worse than having no refresh token at all?**
+
+A refresh token lives 30 days and mints new access tokens. In `localStorage` any injected script reads it, so one XSS bug hands an attacker a month-long credential — strictly worse than a short-lived access token alone. An httpOnly cookie is invisible to page JavaScript.
+
+**3. Walk through how rotation exposes a stolen refresh token. Why does whoever comes second lose?**
+
+Every refresh issues a new token and keeps the old hash as `sessionPrevHash`. If owner and thief both hold RT1, the first to refresh gets RT2; when the second shows RT1, it matches the previous hash — a replay — and the whole session plus every access token of the member is killed. Whoever comes second exposes the copy; if the thief was first, the owner's refresh ends the thief's session too.
+
+**4. Why does reuse detection need a grace window, and what does it cost?**
+
+Two tabs, or a browser restoring its session, refresh the same token at the same moment; the second would look like theft and log a real user out. Inside a 10-second window the replay is refused but the session survives. The cost: a thief who replays within 10 seconds of the owner is not caught that time.
+
+**5. Revoking every token of a blocked user: what do you store, and why does that key expire after 15 minutes?**
+
+A cutoff timestamp in Redis, `auth:revoked:<memberId>`, compared with the token's `iatMs`; the refresh sessions are deleted in MongoDB. The key needs to live only 15 minutes because access tokens expire after 15 minutes — after that every token issued before the cutoff is dead on its own.
+
+**6. Your login answers 70 ms faster for unknown emails. What did you leak, and how do you fix it?**
+
+Which emails are registered (user enumeration through timing). Run bcrypt on every attempt — against a dummy hash when the email is unknown — so both paths cost the same, and return the same message for both.
+
+**7. Why is a password longer than 72 bytes rejected instead of accepted?**
+
+bcrypt reads only the first 72 bytes. Two passwords that share those bytes would both work, and the user would believe the rest of their passphrase protects them. Refusing is honest; the alternative is pre-hashing (SHA-256 then bcrypt).
+
+**8. A Google user's email matches an existing password account. What must happen to that password, and what attack does it prevent?**
+
+The password must be removed and the account's sessions ended. MedVia never verified the email; Google did. Otherwise an attacker who registered the victim's email first keeps a working password after the real owner arrives through Google — pre-account takeover.
+
+**9. The throttle is keyed by IP + email. What goes wrong with IP alone behind Nginx, and with IP alone in an office?**
+
+Behind Nginx without `trust proxy`, every request comes from 127.0.0.1, so all users share one counter and everyone gets throttled together. In an office or behind a mobile carrier's NAT, many users share one IP, so one attacker guessing passwords locks out everybody there. IP + email limits guesses per account.
+
+**10. The suite caught a same-second bug in revocation. Why was `<=` not the fix?**
+
+`iat` is in whole seconds: signup and block in the same second gave `iat < cutoff` = false and the blocked token survived. `<=` would also kill the fresh token `changePassword` hands back in that same second, logging out the user who just changed the password. The fix was precision: an `iatMs` claim and a cutoff in milliseconds.
 
 ---
 
@@ -545,13 +603,27 @@ A refactor must not change behaviour, and "I read the diff carefully" is not pro
 Postman suite is: it passed before the refactor and after it. DI mistakes appear only at boot, not
 at compile time — so the check was a booted server, not just `tsc`.
 
-### Interview questions
+### Interview questions and answers
 
-1. What is a facade, and what did it buy in this module?
-2. `SessionService` is not exported. What stops another module from using it anyway?
-3. `AuthService` needs member data but must not import `MemberModule`. How, and why not?
-4. Five copies of two lines — why not leave them? What had already gone wrong?
-5. Typecheck passed after the refactor. Why was that not enough to call it done?
+**1. What is a facade, and what did it buy in this module?**
+
+One simple entry point in front of several classes. `AuthService` offers start / refresh / end / end-everywhere; callers never touch tokens, sessions or the cookie. It collapsed five copies of "sign out everywhere" into one method, and later login paths (doctor accounts in M3) reuse it.
+
+**2. `SessionService` is not exported. What stops another module from using it anyway?**
+
+Nest's module encapsulation: a provider is private to its module unless listed in `exports`. Injecting `SessionService` elsewhere fails at boot with "Nest can't resolve dependencies".
+
+**3. `AuthService` needs member data but must not import `MemberModule`. How, and why not?**
+
+`AuthModule` registers the Member **model** with `MongooseModule.forFeature`. Importing `MemberModule` would close a cycle, because `MemberModule` already imports `AuthModule`.
+
+**4. Five copies of two lines — why not leave them? What had already gone wrong?**
+
+Copies drift. One of the five had already ended the sessions but forgotten to revoke the access tokens; the next edit would have missed something else. One method means one place to fix and one place to test.
+
+**5. Typecheck passed after the refactor. Why was that not enough to call it done?**
+
+Dependency-injection mistakes — a missing provider, an unexported one, a cycle — only appear when the application boots. And a refactor must not change behaviour, which only running it proves: the 90-assertion Postman suite passed on a booted server before and after.
 
 ---
 
@@ -741,22 +813,47 @@ write (eventual consistency), so a clinic approved a second ago may not be searc
 - **The Postman `data` trap, again.** Six test scripts declared `const data` and failed with
   "Identifier 'data' has already been declared" — exactly the rule in `CLAUDE.md`.
 
-### Interview questions
+### Interview questions and answers
 
-1. Two admins approve the same clinic at the same moment. How does your code make sure only one
-   decision is recorded — without a lock?
-2. What is TOCTOU? Show where it appeared in `updateMyClinic` and how the filter fixes it.
-3. Why does clinic signup need a transaction, and why must the transaction callback be idempotent?
-4. A hot cache key expires and 500 requests arrive. Explain single-flight with `SET NX PX`. What
-   happens if the request holding the lock crashes?
-5. Why are `meLiked` / `meFollowed` not cached, and why are view counts allowed to be stale?
-6. Nestar's like toggle reads first and then writes. What goes wrong under double clicks, and how
-   does a unique index fix it?
-7. An index `{ followingId, followerId }` exists, yet the query on `followerId` does a COLLSCAN.
-   Why? What is the ESR rule?
-8. Why does a `$sort` placed inside `$facet` hurt, while the same `$sort` before it is free?
-9. Name three ways a file upload endpoint can be attacked, and the defence for each.
-10. When is copying a field into another collection (denormalising) safe?
+**1. Two admins approve the same clinic at the same moment. How does your code make sure only one decision is recorded — without a lock?**
+
+The expected status is part of the update filter: `findOneAndUpdate({ _id, clinicStatus: 'PENDING' }, …)`. MongoDB matches and modifies one document atomically, so the second admin's filter finds no PENDING clinic and gets "not allowed in the current status"; the audit log is written only after a successful update.
+
+**2. What is TOCTOU? Show where it appeared in `updateMyClinic` and how the filter fixes it.**
+
+Time of check to time of use: a decision based on a read is stale by the time of the write. `updateMyClinic` read PENDING (so renaming was allowed); an admin approved; the rename then landed on a verified clinic. Writing with `{ _id, clinicStatus: <status read> }` makes the write match nothing if the status moved.
+
+**3. Why does clinic signup need a transaction, and why must the transaction callback be idempotent?**
+
+The AGENT account and the clinic must exist together; a failure between two separate inserts leaves an account that owns nothing and whose email can never register again. `withTransaction` retries the callback on transient errors, so it may run more than once — the callback must only do database work inside the session, never send anything or set a cookie.
+
+**4. A hot cache key expires and 500 requests arrive. Explain single-flight with `SET NX PX`. What happens if the request holding the lock crashes?**
+
+The first request wins `SET lock:<key> 1 NX PX 3000` (NX: only if absent), rebuilds and stores the value; the others poll the cache for up to a second and read it. If the holder crashes, the lock expires after 3 seconds (PX) and the next request rebuilds — no deadlock. MedVia measured 50 concurrent misses → one rebuild.
+
+**5. Why are `meLiked` / `meFollowed` not cached, and why are view counts allowed to be stale?**
+
+They differ per viewer while the cached page is shared; caching them would show one patient's heart to everyone. View counts change on every first visit; invalidating on each would destroy the hit rate on exactly the popular pages, and a count 60 seconds behind harms no one.
+
+**6. Nestar's like toggle reads first and then writes. What goes wrong under double clicks, and how does a unique index fix it?**
+
+Two clicks both read "not liked", both insert and both increment — the counter moves twice. With a unique index on `{ memberId, likeRefId }` the write decides: delete first (an existing like → −1), otherwise insert; the twin insert fails with duplicate key 11000 and reports 0, so the counter moves once.
+
+**7. An index `{ followingId, followerId }` exists, yet the query on `followerId` does a COLLSCAN. Why? What is the ESR rule?**
+
+An index is used from its leftmost prefix; `followerId` is its second field, so the query cannot seek on it and scans the collection. ESR: Equality fields first, then Sort, then Range — `{ followerId: 1, createdAt: -1 }` serves "my followings, newest first" (20 000 → 10 documents examined).
+
+**8. Why does a `$sort` placed inside `$facet` hurt, while the same `$sort` before it is free?**
+
+Sub-pipelines inside `$facet` never use indexes, so a `$sort` there sorts every matched document in memory. Placed before `$facet`, right after `$match`, the same sort is delivered in order by the index.
+
+**9. Name three ways a file upload endpoint can be attacked, and the defence for each.**
+
+A vulnerable parser reached before authentication (graphql-upload's `dicer` crash) → parse after the guard, with size limits. Path traversal through a client-chosen folder → a fixed map of allowed targets. A spoofed type or name → check the magic bytes and generate the file name on the server. (Also: refuse image fields that are not our own upload paths.)
+
+**10. When is copying a field into another collection (denormalising) safe?**
+
+When the copied value cannot change after it is copied (a member's type), or when the copy is derived and fully recomputed from its source on every change (`clinicMinPrice`), so a missed update heals itself. Not when every writer of the source must remember to update the copy.
 
 ---
 
@@ -861,16 +958,35 @@ dictionary. `포스트맨글로우피부과의원` is found by `포스트맨`, `
 `피부과의원`, but not by `피부과` — nori keeps `피부과의원` as one word. Word-prefix matching would
 need an `autocomplete` (edgeGram) mapping.
 
-### Interview questions
+### Interview questions and answers
 
-1. A list must filter on a status stored in another collection and still paginate. Compare
-   `$lookup`, a copied flag and an `$in` of ids. Which did you choose, and when would you switch?
-2. When is denormalising safe, and why was it safe for `followingType` but not for clinic status?
-3. Your `$in` returned nothing, with no error. What happened?
-4. A clinic and an admin can both hide a doctor. How do you stop the clinic from undoing the admin?
-5. Why answer "not found" instead of "forbidden" when a clinic touches another clinic's doctor?
-6. "Clear history" — why not delete the rows?
-7. Your search test fails right after a write and passes 30 seconds later. Explain.
+**1. A list must filter on a status stored in another collection and still paginate. Compare `$lookup`, a copied flag and an `$in` of ids. Which did you choose, and when would you switch?**
+
+`$lookup` joins every doctor to its clinic before the page can be cut: 1003 ms on 20 000 doctors. A copied flag is fastest (286 ms) but needs a fan-out `updateMany` on every clinic status change and two sources of truth. A cached list of active clinic ids with `$in` keeps one source of truth and pages through an index: 317 ms. Chosen: `$in`; switch to the flag when the id list reaches tens of thousands.
+
+**2. When is denormalising safe, and why was it safe for `followingType` but not for clinic status?**
+
+Safe when the value cannot change after it is copied, or when the copy is recomputed from the source. `followingType` is a member's type, which never changes. A clinic's status changes (approve, suspend, restore), so every change would have to reach every doctor, and one missed update shows doctors of a suspended clinic.
+
+**3. Your `$in` returned nothing, with no error. What happened?**
+
+The ids came back from Redis as JSON strings. `$in` compares types strictly; a string never equals an ObjectId, so nothing matched and no error was raised. They are converted back to ObjectIds after the cache read.
+
+**4. A clinic and an admin can both hide a doctor. How do you stop the clinic from undoing the admin?**
+
+Two separate states with separate owners: the clinic moves ACTIVE ⇄ HIDDEN, the admin ACTIVE ⇄ SUSPENDED. `showDoctor` filters on `HIDDEN`, so against a SUSPENDED doctor it matches nothing and returns "not allowed in the current status".
+
+**5. Why answer "not found" instead of "forbidden" when a clinic touches another clinic's doctor?**
+
+"Forbidden" confirms the id exists and belongs to someone else — free information for anyone enumerating ids. "Not found" says nothing, and from that clinic's point of view the doctor indeed does not exist.
+
+**6. "Clear history" — why not delete the rows?**
+
+A deleted row makes the next visit a first visit again, so the view counter would grow every time a patient cleared the history. The rows are hidden (`viewHidden`), and a revisit un-hides them without counting again.
+
+**7. Your search test fails right after a write and passes 30 seconds later. Explain.**
+
+Atlas Search reads a separate Lucene index that is updated asynchronously from the database — eventual consistency. A document written a moment ago is not searchable yet; seconds later it is. The test retries instead of expecting the write to be visible at once.
 
 ---
 
@@ -958,15 +1074,31 @@ What stayed separate on purpose: `getClinics`, `getMyClinicDoctors`, `getAllDoct
 query that changes its answer by role would mix permissions with filtering and would need the
 role in every cache key — the leak above, in another shape.
 
-### Interview questions
+### Interview questions and answers
 
-1. Nestar put `meLiked` into the list pipeline. Why does that break once the list is cached?
-2. How do you show "liked" on 10 cards with one query? Which index serves it?
-3. What is the strategy pattern here, and how does it keep `LikeService` closed for modification?
-4. The like module calls code in the clinic module without importing it. How?
-5. Why not one `getDoctors` that returns different data for guests, clinics and admins?
-6. A search right after a write returns nothing for a full minute, although the search index
-   caught up in five seconds. What happened, and which requests should not be cached?
+**1. Nestar put `meLiked` into the list pipeline. Why does that break once the list is cached?**
+
+The cached page is shared by all viewers. `meLiked` computed inside the cached pipeline belongs to whoever filled the cache, and every later visitor would see that person's hearts.
+
+**2. How do you show "liked" on 10 cards with one query? Which index serves it?**
+
+Load the page, then one query: `likes.find({ memberId, likeRefId: { $in: pageIds } })`, turned into a set and matched against each card. It is served by the unique `{ memberId, likeRefId }` index — equality on the member, `$in` on the targets.
+
+**3. What is the strategy pattern here, and how does it keep `LikeService` closed for modification?**
+
+Each likeable module provides an object with the same interface (`isLikeable`, `moveLikes`, `countLikes`), and `LikeService` picks one by `likeGroup`. A new likeable type registers a new handler; `likeTarget` itself is never edited — open for extension, closed for modification.
+
+**4. The like module calls code in the clinic module without importing it. How?**
+
+Dependency inversion: `LikeService` defines the `LikeTargetHandler` interface; the clinic module imports the like module and registers its handler in `onModuleInit`. The like module calls back through the interface it owns, so the import only points from clinic to like.
+
+**5. Why not one `getDoctors` that returns different data for guests, clinics and admins?**
+
+It would mix authorisation with filtering — every `if (role)` branch is a possible leak — and the cache key would need the role, or one role's results would be served to another. Separate queries with their own guards are easy to audit.
+
+**6. A search right after a write returns nothing for a full minute, although the search index caught up in five seconds. What happened, and which requests should not be cached?**
+
+The first search ran before the index caught up, and its "not found" was cached for 60 seconds; every later request read the cache, never the index. Text searches should not be cached: almost every query is different (low hit rate) and they read an index that lags. Repeated filter-only browsing is what is worth caching.
 
 ---
 
@@ -1068,12 +1200,118 @@ With a token only the treatment name has, the test failed as it should: the Atla
 contain `clinicTreatmentNames` yet. A green test only proves something if it would fail without
 the feature.
 
-### Interview questions
+### Interview questions and answers
 
-1. What does an index cost on writes, and why did you drop one in M3?
-2. What is a multikey index? A partial index? Where did you use each?
-3. How do you let an admin review an edit without taking the live page down?
-4. Why does a price increase skip review while a decrease waits?
-5. The admin approves an edit the clinic changed a second ago. How do you stop that without a lock?
-6. You copy the minimum price onto the clinic. Why is that safe here when a copied status flag was not?
-7. A test passed, yet the feature did not work. How did that happen, and how do you avoid it?
+**1. What does an index cost on writes, and why did you drop one in M3?**
+
+Every write updates the document and every index on it, and indexes want RAM. The `views` index `{ memberId, viewGroup, updatedAt }` was dropped in M3 because the query it served had been replaced — it only cost writes.
+
+**2. What is a multikey index? A partial index? Where did you use each?**
+
+A multikey index indexes an array field with one entry per element: `doctorIds`, so "treatments of Dr. Han" is an index lookup. A partial index includes only documents matching a filter: `treatmentDraft.submittedAt` for treatments that have a draft, so the admin's edit queue index stays tiny.
+
+**3. How do you let an admin review an edit without taking the live page down?**
+
+Keep two versions: the live fields keep serving patients, the edited ad-relevant fields wait in `treatmentDraft`. Approval copies the draft over the live fields; rejection drops it. Public queries never return the draft.
+
+**4. Why does a price increase skip review while a decrease waits?**
+
+The risk is one-sided: a lower advertised price can be bait, a higher one misleads no one — and the clinic should not be forced to serve at the old price. Patients who already booked are unaffected, because a booking stores its own copy of the price.
+
+**5. The admin approves an edit the clinic changed a second ago. How do you stop that without a lock?**
+
+Optimistic concurrency: every change of the draft moves its version (`submittedAt`); the admin sends back the version shown, and the approval filters on it. If the clinic changed the draft, nothing matches and the admin is asked to reload. No lock is held while the admin reads.
+
+**6. You copy the minimum price onto the clinic. Why is that safe here when a copied status flag was not?**
+
+It is derived data, recomputed from the ACTIVE treatments and written whole after every change: idempotent, rebuildable by a batch job, and a lost update heals on the next change. A copied status flag is adjusted by every writer and stays wrong as soon as one of them forgets.
+
+**7. A test passed, yet the feature did not work. How did that happen, and how do you avoid it?**
+
+The clinic name and the treatment name shared the same timestamp token, so the search found the clinic by its own name. Make the test data unique to the path under test, and confirm the test fails when the feature is missing.
+
+---
+
+## M4.1 — Unit tests with Jest
+
+### 1. Jest had been here since M0 — with zero tests
+
+`jest`, `ts-jest` and `@nestjs/testing` arrived with the Nest project template in the very first
+commit, together with `npm test`. Nothing was ever written for them; every check so far went
+through Postman/Newman. A project that ships a test runner and no tests reads worse than one
+without the runner, so M4.1 gives it real work.
+
+### 2. The testing pyramid: two kinds of test, two kinds of question
+
+| | Newman (Postman, since M0) | Jest (since M4.1) |
+| --- | --- | --- |
+| Asks | does the running system answer correctly? | is this rule right for every input? |
+| Needs | API, MongoDB, Redis | nothing — fakes stand in |
+| Speed | minutes for M0–M4 | 39 tests in ~2.5 s |
+| A failure says | "M4 / request 41 failed" — now go find why | "a lower price did not go to the draft" |
+| Shape | few, broad, slow (top of the pyramid) | many, narrow, fast (bottom) |
+
+They do not replace each other. Postman proves the pieces are wired together; Jest proves the
+rules with combinations Postman could never afford — every M4 price/draft case through Postman
+would need a clinic, doctors, a treatment and an admin approval each.
+
+### 3. Functional core, imperative shell
+
+`shapeDraft` and `normalizeHours` were `private` methods of services that also talk to MongoDB.
+Testing them meant faking a model for every test. They were moved to `treatment.rules.ts` and
+`clinic.rules.ts` as **pure functions**: input in, plan out, no database, no Nest, and even the
+clock is a parameter (`planLiveEdit(current, fields, now)`) so the result is exact. The service
+keeps the side effects — read, decide (by calling the rule), write. Behaviour did not change: the
+M2 and M4 Postman folders passed after the move.
+
+### 4. DI pays off: fakes instead of Redis and MongoDB
+
+M0.1 promised that dependency injection lets a test hand a class a fake. Here it is:
+
+```ts
+Test.createTestingModule({
+	providers: [CacheService, { provide: RedisService, useValue: { redis: new FakeRedis() } }],
+});
+```
+
+`CacheService` gets thirty lines of in-memory Redis and never knows. The same fake records every
+command, so the single-flight test can assert "50 concurrent misses → 50 `SET lock … PX 3000 NX`
+attempts → the loader ran once", and a second fake whose every command throws proves "Redis
+down → slower, never broken". `LikeService` gets a fake Mongoose model through
+`getModelToken('Like')`; one test makes `create` throw duplicate key 11000 to replay the
+double-click race without two real clicks.
+
+### 5. A test is only worth something if it can fail
+
+M4 had a green test that passed for the wrong reason. So every new test here was checked the
+other way round — break the feature, watch the test go red, restore:
+
+| Broken on purpose | Caught by |
+| --- | --- |
+| every price change applies at once | "sends a lower price to the draft" |
+| every request takes the cache lock | "single-flight: 50 concurrent misses run the loader once" |
+| a `null` result is not cached | "penetration: caches not found" |
+
+This is **mutation testing** done by hand; tools such as Stryker automate it.
+
+### Interview questions and answers
+
+**1. What is the testing pyramid, and where do your Postman and Jest tests sit on it?**
+
+Many fast, narrow unit tests at the bottom; few slow, broad end-to-end tests at the top. Jest is at the bottom — 39 tests in about 2.5 seconds, no database. Newman / Postman is at the top — the whole system, minutes per run. The bottom proves the rules for every input, the top proves the pieces are wired together.
+
+**2. Why did you move `shapeDraft` out of the service before testing it?**
+
+It was a private method of a service that talks to MongoDB, so testing it meant faking a model each time. As a pure function (`planLiveEdit`) with the clock passed in, it runs without a database, in milliseconds, with exact results — functional core, imperative shell.
+
+**3. How do you test a class that needs Redis without running Redis?**
+
+Through dependency injection: `Test.createTestingModule` gives `CacheService` an in-memory `FakeRedis` in place of `RedisService`, and the class never knows. The fake records commands for assertions, and a second fake that throws on every command proves the service degrades to the database when Redis is down.
+
+**4. How do you reproduce a race condition (a double click) in a unit test?**
+
+Fake the outcome of the race instead of racing: a fake model whose `create` throws duplicate key 11000 replays "the twin request inserted first", and the test asserts the counter does not move. For single-flight, real concurrency is cheap: 50 calls through `Promise.all`.
+
+**5. Your tests are green. How do you know they would turn red if the feature broke?**
+
+Break the feature on purpose, watch the test go red, restore it. In M4.1 the price rule, single-flight and the miss sentinel were each broken and each was caught by its own test — mutation testing by hand; Stryker automates it.
