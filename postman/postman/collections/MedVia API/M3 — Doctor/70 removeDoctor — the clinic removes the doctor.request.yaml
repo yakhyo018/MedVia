@@ -1,0 +1,27 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation RemoveDoctor($doctorId: String!) {
+        removeDoctor(doctorId: $doctorId) { _id doctorStatus }
+      }
+    variables: |-
+      { "doctorId": "{{doctorId}}" }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('status DELETE', () => pm.expect((gql.removeDoctor || {}).doctorStatus).to.eql('DELETE'));
+    language: text/javascript
+order: 70000

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model, ObjectId, PipelineStage, Types } from 'mongoose';
 import { createHash } from 'crypto';
@@ -38,11 +38,13 @@ const DETAIL_TTL_SECONDS = 60;
 /** "Similar clinics nearby": within 5 km of the pin. */
 const NEARBY_MAX_METERS = 5_000;
 
+const ACTIVE_IDS_TTL_SECONDS = 60;
+
 /** Identity fields the admin verified. Locked once the clinic is live. */
 const LOCKED_FIELDS = ['clinicName', 'clinicNameKo', 'clinicDistrict', 'clinicAddress'] as const;
 
 @Injectable()
-export class ClinicService {
+export class ClinicService implements OnModuleInit {
 	constructor(
 		@InjectModel('Clinic') private readonly clinicModel: Model<Clinic>,
 		@InjectConnection() private readonly connection: Connection,
@@ -54,6 +56,22 @@ export class ClinicService {
 		private readonly auditLogService: AuditLogService,
 		private readonly cacheService: CacheService,
 	) {}
+
+	/** The clinic's answer to likeTarget(CLINIC): only ACTIVE clinics, counter in clinicLikes. */
+	public onModuleInit(): void {
+		this.likeService.registerTarget(LikeGroup.CLINIC, {
+			isLikeable: async (_id) =>
+				!!(await this.clinicModel.exists({ _id, clinicStatus: ClinicStatus.ACTIVE }).exec()),
+			moveLikes: async (_id, modifier) => {
+				const clinic = await this.clinicStatsEditor({ _id, targetKey: 'clinicLikes', modifier });
+				// The page shows the count next to the heart; a stale cached count would contradict it.
+				await this.cacheService.del(CacheKeys.clinicDetail(_id));
+				return clinic?.clinicLikes ?? 0;
+			},
+			countLikes: async (_id) =>
+				(await this.clinicModel.findById(_id, { clinicLikes: 1 }).lean().exec())?.clinicLikes ?? 0,
+		});
+	}
 
 	/* ───────────────────────── clinic account ───────────────────────── */
 
@@ -202,14 +220,27 @@ export class ClinicService {
 	}
 
 	/**
-	 * Cached per distinct filter set. The key is a hash of the input, so the same filters
-	 * hit the same entry; any change to any clinic drops every list entry (invalidateClinic).
+	 * Browsing (filters only) is cached per distinct filter set: the key is a hash of the
+	 * input, and any change to any clinic drops every list entry (invalidateClinic).
+	 *
+	 * Text searches are not cached. Almost every one is different, so they rarely hit; and
+	 * Atlas Search lags the collection by a few seconds, so a search made right after a clinic
+	 * goes live could cache "not found" for the whole TTL — the cache would freeze the
+	 * eventual-consistency gap instead of letting it close.
 	 */
-	public async getClinics(input: ClinicsInquiry): Promise<Clinics> {
-		const hash = createHash('sha1').update(JSON.stringify(input)).digest('hex');
-		return await this.cacheService.wrap(CacheKeys.clinicList(hash), LIST_TTL_SECONDS, () =>
-			this.loadClinics(input),
-		);
+	public async getClinics(authMember: AuthMember | null, input: ClinicsInquiry): Promise<Clinics> {
+		const page = input.search?.text?.trim()
+			? await this.loadClinics(input)
+			: await this.cacheService.wrap(
+					CacheKeys.clinicList(this.hashInput(input)),
+					LIST_TTL_SECONDS,
+					() => this.loadClinics(input),
+				);
+		return { ...page, list: await this.withViewerFlags(authMember, page.list) };
+	}
+
+	private hashInput(input: ClinicsInquiry): string {
+		return createHash('sha1').update(JSON.stringify(input)).digest('hex');
 	}
 
 	private async loadClinics(input: ClinicsInquiry): Promise<Clinics> {
@@ -275,7 +306,15 @@ export class ClinicService {
 	 * Same specialty, nearest first, when the clinic has a map pin; otherwise the most
 	 * liked clinics of the same specialty in the same district.
 	 */
-	public async getNearbyClinics(clinicId: string, limit: number): Promise<Clinic[]> {
+	public async getNearbyClinics(
+		authMember: AuthMember | null,
+		clinicId: string,
+		limit: number,
+	): Promise<Clinic[]> {
+		return await this.withViewerFlags(authMember, await this.loadNearbyClinics(clinicId, limit));
+	}
+
+	private async loadNearbyClinics(clinicId: string, limit: number): Promise<Clinic[]> {
 		const _id = this.toObjectId(clinicId);
 		const base = await this.clinicModel
 			.findOne({ _id, clinicStatus: ClinicStatus.ACTIVE })
@@ -317,33 +356,8 @@ export class ClinicService {
 
 	/* ───────────────────────── patient activity ───────────────────────── */
 
-	public async likeTargetClinic(memberId: ObjectId, clinicId: string): Promise<Clinic> {
-		const _id = this.toObjectId(clinicId);
-		const exists = await this.clinicModel.exists({ _id, clinicStatus: ClinicStatus.ACTIVE }).exec();
-		if (!exists) throw new NotFoundException(Messages.NO_DATA_FOUND);
-
-		const modifier = await this.likeService.toggleLike({
-			memberId,
-			likeGroup: LikeGroup.CLINIC,
-			likeRefId: _id,
-		});
-
-		const clinic =
-			modifier !== 0
-				? await this.clinicStatsEditor({ _id, targetKey: 'clinicLikes', modifier })
-				: await this.clinicModel.findById(_id).lean().exec();
-
-		// The page shows the count next to the heart; a stale cached count would contradict it.
-		await this.cacheService.del(CacheKeys.clinicDetail(_id));
-		return { ...clinic, meLiked: modifier >= 0 } as Clinic;
-	}
-
 	public async getFavoriteClinics(memberId: ObjectId, input: OrdinaryInquiry): Promise<Clinics> {
 		return await this.likeService.getFavoriteClinics(memberId, input);
-	}
-
-	public async getVisitedClinics(memberId: ObjectId, input: OrdinaryInquiry): Promise<Clinics> {
-		return await this.viewService.getVisitedClinics(memberId, input);
 	}
 
 	/** Counters move only through $inc: atomic, so two concurrent likes both count. */
@@ -353,6 +367,37 @@ export class ClinicService {
 			.findByIdAndUpdate(_id, { $inc: { [targetKey]: modifier } }, { new: true })
 			.lean()
 			.exec();
+	}
+
+	/**
+	 * Ids of every ACTIVE clinic — the "clinic is live" half of a doctor's visibility.
+	 * Read from `clinics` (one source of truth) and cached briefly; any clinic status change
+	 * drops the key. Cached as strings, so they are turned back into ObjectIds: a `$in` of
+	 * strings would match no ObjectId and silently return nothing.
+	 */
+	public async getActiveClinicIds(): Promise<ObjectId[]> {
+		const ids = await this.cacheService.wrap<string[]>(
+			CacheKeys.activeClinicIds,
+			ACTIVE_IDS_TTL_SECONDS,
+			async () =>
+				(await this.clinicModel.distinct('_id', { clinicStatus: ClinicStatus.ACTIVE }).exec()).map(
+					String,
+				),
+		);
+		return ids.map((id) => shapeIntoMongoObjectId(id) as ObjectId);
+	}
+
+	/** Used by doctor pages: the clinic, only if it is live. */
+	public async findActiveClinic(clinicId: unknown): Promise<Clinic | null> {
+		return (await this.clinicModel
+			.findOne({ _id: clinicId, clinicStatus: ClinicStatus.ACTIVE })
+			.lean()
+			.exec()) as Clinic | null;
+	}
+
+	/** Used when a clinic account adds a doctor. */
+	public async findClinicByMember(memberId: ObjectId): Promise<Clinic | null> {
+		return (await this.clinicModel.findOne({ memberId }).lean().exec()) as Clinic | null;
 	}
 
 	/* ───────────────────────── admin ───────────────────────── */
@@ -544,14 +589,47 @@ export class ClinicService {
 			.sort((a, b) => a.day - b.day);
 	}
 
+	/**
+	 * The heart and the follow button on every card. Applied after the cache — the cached page
+	 * is the same for everyone, these two flags are not — with one `$in` query each for the
+	 * whole page. Guests cost nothing.
+	 */
+	private async withViewerFlags(authMember: AuthMember | null, list: Clinic[]): Promise<Clinic[]> {
+		if (!authMember || list.length === 0) return list;
+		const [liked, followed] = await Promise.all([
+			this.likeService.likedIds(
+				authMember._id,
+				list.map((clinic) => clinic._id),
+			),
+			this.followService.followedIds(
+				authMember._id,
+				list.map((clinic) => clinic.memberId),
+			),
+		]);
+		return list.map((clinic) => ({
+			...clinic,
+			meLiked: liked.has(String(clinic._id)),
+			meFollowed: followed.has(String(clinic.memberId)),
+		}));
+	}
+
 	/** An id that is not an ObjectId cannot exist — answered before it reaches the cache or Mongo. */
 	private toObjectId(id: string): ObjectId {
 		if (!Types.ObjectId.isValid(id)) throw new NotFoundException(Messages.NO_DATA_FOUND);
 		return shapeIntoMongoObjectId(id) as ObjectId;
 	}
 
+	/**
+	 * Every clinic change also reaches the doctor pages: a doctor is public only while the
+	 * clinic is ACTIVE, and a doctor page shows the clinic's name and district. Doctor
+	 * detail keys do not carry the clinic id, so the whole `doctor:detail:*` prefix goes —
+	 * acceptable because clinic edits and admin decisions are rare next to page reads.
+	 */
 	private async invalidateClinic(clinicId: unknown): Promise<void> {
 		await this.cacheService.del(CacheKeys.clinicDetail(clinicId));
+		await this.cacheService.del(CacheKeys.activeClinicIds);
 		await this.cacheService.invalidate(CacheKeys.clinicListPattern);
+		await this.cacheService.invalidate(CacheKeys.doctorListPattern);
+		await this.cacheService.invalidate(CacheKeys.doctorDetailPattern);
 	}
 }

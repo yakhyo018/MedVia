@@ -7,10 +7,13 @@ export enum AuditAction {
 	CLINIC_REJECT = 'CLINIC_REJECT',
 	CLINIC_SUSPEND = 'CLINIC_SUSPEND',
 	CLINIC_RESTORE = 'CLINIC_RESTORE',
+	DOCTOR_SUSPEND = 'DOCTOR_SUSPEND',
+	DOCTOR_RESTORE = 'DOCTOR_RESTORE',
 }
 registerEnumType(AuditAction, { name: 'AuditAction' });
 
 export enum AuditGroup {
 	CLINIC = 'CLINIC',
+	DOCTOR = 'DOCTOR',
 }
 registerEnumType(AuditGroup, { name: 'AuditGroup' });

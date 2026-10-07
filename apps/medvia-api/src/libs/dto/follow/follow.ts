@@ -3,6 +3,7 @@ import type { ObjectId } from 'mongoose';
 import { MemberType } from '../../enums/member.enum';
 import { TotalCounter } from '../member/member';
 import { Clinic } from '../clinic/clinic';
+import { Doctor } from '../doctor/doctor';
 
 /**
  * What one member may see of another. Never the Member type itself: that carries the
@@ -47,6 +48,10 @@ export class Follow {
 	/** Set when the followed member is a clinic account: the card shows the clinic. */
 	@Field(() => Clinic, { nullable: true })
 	followingClinic?: Clinic;
+
+	/** Set when the followed member is a doctor: the doctor card, with its clinic. */
+	@Field(() => Doctor, { nullable: true })
+	followingDoctor?: Doctor;
 }
 
 @ObjectType()

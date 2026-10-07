@@ -3,16 +3,18 @@ url: '{{baseUrl}}/graphql'
 method: POST
 headers:
   Content-Type: application/json
-  Authorization: Bearer {{clinicToken}}
 body:
   type: graphql
   content:
     query: |-
-      mutation LikeTargetClinic($clinicId: String!) {
-        likeTargetClinic(clinicId: $clinicId) { _id clinicLikes meLiked }
+      query GetDoctors($input: DoctorsInquiry!) {
+        getDoctors(input: $input) {
+          list { _id doctorName doctorLangs clinicData { _id clinicName } }
+          metaCounter { total }
+        }
       }
     variables: |-
-      { "clinicId": "{{clinicId}}" }
+      { "input": { "page": 1, "limit": 10, "sort": "memberPassword" } }
 scripts:
   - type: afterResponse
     code: |-
@@ -21,7 +23,6 @@ scripts:
       const err = (body.errors && body.errors[0]) || {};
       const msg = err.message || '';
       const code = (err.extensions && err.extensions.code) || '';
-      pm.test('refused: Allowed only for members with specific roles!', () => pm.expect(msg).to.include("Allowed only for members with specific roles!"));
-      pm.test('code FORBIDDEN', () => pm.expect(code).to.eql('FORBIDDEN'));
+      pm.test('refused: sort must be one of the following values', () => pm.expect(msg).to.include("sort must be one of the following values"));
     language: text/javascript
-order: 34000
+order: 19000

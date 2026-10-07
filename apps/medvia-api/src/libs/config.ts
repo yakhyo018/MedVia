@@ -44,4 +44,17 @@ export const CacheKeys = {
 	clinicDetail: (clinicId: unknown) => `clinic:detail:${String(clinicId)}`,
 	clinicList: (hash: string) => `clinic:list:${hash}`,
 	clinicListPattern: 'clinic:list:*',
+	activeClinicIds: 'clinic:active:ids',
+	doctorDetail: (doctorId: unknown) => `doctor:detail:${String(doctorId)}`,
+	doctorDetailPattern: 'doctor:detail:*',
+	doctorList: (hash: string) => `doctor:list:${hash}`,
+	doctorListPattern: 'doctor:list:*',
 };
+
+export const availableDoctorSorts = [
+	'createdAt',
+	'doctorName',
+	'doctorLikes',
+	'doctorFollowers',
+	'doctorViews',
+];

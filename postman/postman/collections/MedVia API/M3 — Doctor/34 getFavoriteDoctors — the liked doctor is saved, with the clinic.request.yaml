@@ -8,11 +8,11 @@ body:
   type: graphql
   content:
     query: |-
-      mutation LikeTargetClinic($clinicId: String!) {
-        likeTargetClinic(clinicId: $clinicId) { _id clinicLikes meLiked }
+      query GetFavoriteDoctors($input: OrdinaryInquiry!) {
+        getFavoriteDoctors(input: $input) { list { _id clinicData { clinicName } } metaCounter { total } }
       }
     variables: |-
-      { "clinicId": "{{clinicId}}" }
+      { "input": { "page": 1, "limit": 10 } }
 scripts:
   - type: afterResponse
     code: |-
@@ -22,8 +22,9 @@ scripts:
       const msg = err.message || '';
       const code = (err.extensions && err.extensions.code) || '';
       pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
-      const c = gql.likeTargetClinic || {};
-      pm.test('clinicLikes back to 0', () => pm.expect(c.clinicLikes).to.eql(0));
-      pm.test('meLiked false', () => pm.expect(c.meLiked).to.eql(false));
+      const page = gql.getFavoriteDoctors || {};
+      const d = (page.list || [])[0] || {};
+      pm.test('one favorite doctor', () => pm.expect(page.metaCounter).to.eql([{ total: 1 }]));
+      pm.test('this doctor, clinic attached', () => pm.expect([d._id, (d.clinicData || {}).clinicName]).to.eql([pm.environment.get('doctorId'), pm.environment.get('clinicName')]));
     language: text/javascript
-order: 47000
+order: 34000

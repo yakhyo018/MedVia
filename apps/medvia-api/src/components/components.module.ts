@@ -5,8 +5,19 @@ import { ClinicModule } from './clinic/clinic.module';
 import { FollowModule } from './follow/follow.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { UploadModule } from './upload/upload.module';
+import { DoctorModule } from './doctor/doctor.module';
+import { ViewModule } from './view/view.module';
 
 @Module({
-	imports: [AuthModule, MemberModule, ClinicModule, FollowModule, AuditLogModule, UploadModule],
+	imports: [
+		AuthModule,
+		MemberModule,
+		ClinicModule,
+		DoctorModule,
+		FollowModule,
+		ViewModule,
+		AuditLogModule,
+		UploadModule,
+	],
 })
 export class ComponentsModule {}

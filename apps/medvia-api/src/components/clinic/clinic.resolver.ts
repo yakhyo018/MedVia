@@ -81,33 +81,32 @@ export class ClinicResolver {
 		return await this.clinicService.getClinic(authMember, clinicId);
 	}
 
+	@UseGuards(WithoutGuard)
 	@Query(() => Clinics)
-	public async getClinics(@Args('input') input: ClinicsInquiry): Promise<Clinics> {
+	public async getClinics(
+		@Args('input') input: ClinicsInquiry,
+		@AuthMember() authMember: AuthMemberType | null,
+	): Promise<Clinics> {
 		console.log('Query: getClinics');
-		return await this.clinicService.getClinics(input);
+		return await this.clinicService.getClinics(authMember, input);
 	}
 
+	@UseGuards(WithoutGuard)
 	@Query(() => [Clinic])
 	public async getNearbyClinics(
 		@Args('clinicId') clinicId: string,
 		@Args('limit', { type: () => Int, defaultValue: 3 }) limit: number,
+		@AuthMember() authMember: AuthMemberType | null,
 	): Promise<Clinic[]> {
 		console.log('Query: getNearbyClinics');
-		return await this.clinicService.getNearbyClinics(clinicId, Math.min(Math.max(limit, 1), 10));
+		return await this.clinicService.getNearbyClinics(
+			authMember,
+			clinicId,
+			Math.min(Math.max(limit, 1), 10),
+		);
 	}
 
 	/** PATIENT **/
-
-	@Roles(MemberType.USER)
-	@UseGuards(RolesGuard)
-	@Mutation(() => Clinic)
-	public async likeTargetClinic(
-		@Args('clinicId') clinicId: string,
-		@AuthMember('_id') memberId: ObjectId,
-	): Promise<Clinic> {
-		console.log('Mutation: likeTargetClinic');
-		return await this.clinicService.likeTargetClinic(memberId, clinicId);
-	}
 
 	@UseGuards(AuthGuard)
 	@Query(() => Clinics)
@@ -117,16 +116,6 @@ export class ClinicResolver {
 	): Promise<Clinics> {
 		console.log('Query: getFavoriteClinics');
 		return await this.clinicService.getFavoriteClinics(memberId, input);
-	}
-
-	@UseGuards(AuthGuard)
-	@Query(() => Clinics)
-	public async getVisitedClinics(
-		@Args('input') input: OrdinaryInquiry,
-		@AuthMember('_id') memberId: ObjectId,
-	): Promise<Clinics> {
-		console.log('Query: getVisitedClinics');
-		return await this.clinicService.getVisitedClinics(memberId, input);
 	}
 
 	/** ADMIN **/

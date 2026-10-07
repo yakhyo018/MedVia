@@ -34,6 +34,8 @@ export interface EmailMemberFields {
 	memberPhone?: string;
 	memberCountry?: string;
 	memberLang?: Language;
+	/** Doctor accounts: the clinic chose the password, so the doctor is asked to replace it. */
+	memberMustChangePassword?: boolean;
 }
 
 @Injectable()
@@ -242,6 +244,43 @@ export class MemberService {
 			.exec();
 		if (!member) throw new InternalServerErrorException(Messages.UPDATE_FAILED);
 		return member as Member;
+	}
+
+	/**
+	 * A clinic resets a doctor's password (there is no email to send a reset link to).
+	 * The new password is temporary again, and every device of the doctor is signed out.
+	 */
+	public async setTemporaryPassword(memberId: ObjectId, password: string): Promise<void> {
+		const member = await this.memberModel
+			.findOneAndUpdate(
+				{ _id: memberId, memberStatus: MemberStatus.ACTIVE },
+				{
+					memberPassword: await this.authService.hashPassword(password),
+					memberMustChangePassword: true,
+				},
+			)
+			.exec();
+		if (!member) throw new BadRequestException(Messages.UPDATE_FAILED);
+		await this.authService.endAllSessions(memberId);
+	}
+
+	/**
+	 * Closes an account owned by someone else's decision — a clinic removing its doctor.
+	 * Joins the caller's transaction; the caller signs the member out after the commit.
+	 */
+	public async closeAccount(memberId: ObjectId, session?: ClientSession): Promise<void> {
+		await this.memberModel
+			.updateOne(
+				{ _id: memberId },
+				{ memberStatus: MemberStatus.DELETE, deletedAt: new Date() },
+				{ session },
+			)
+			.exec();
+	}
+
+	/** Signs a member out everywhere — used after closeAccount commits. */
+	public async signOutEverywhere(memberId: ObjectId): Promise<void> {
+		await this.authService.endAllSessions(memberId);
 	}
 
 	/* ───────────────────────── admin ───────────────────────── */

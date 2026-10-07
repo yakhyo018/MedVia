@@ -1,0 +1,29 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation LikeTarget($input: LikeTargetInput!) {
+        likeTarget(input: $input) { likeGroup likeRefId meLiked likes }
+      }
+    variables: |-
+      { "input": { "likeGroup": "DOCTOR", "likeRefId": "{{doctorId}}" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const r = gql.likeTarget || {};
+      pm.test('the doctor', () => pm.expect([r.likeGroup, r.likeRefId]).to.eql(['DOCTOR', pm.environment.get('doctorId')]));
+      pm.test('likes 1, meLiked', () => pm.expect([r.likes, r.meLiked]).to.eql([1, true]));
+    language: text/javascript
+order: 33000

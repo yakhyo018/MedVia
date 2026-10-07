@@ -5,6 +5,7 @@ import { Follow, Followings } from '../../libs/dto/follow/follow';
 import { FollowInput, FollowingsInquiry } from '../../libs/dto/follow/follow.input';
 import { Messages } from '../../libs/enums/common.enum';
 import { ClinicStatus } from '../../libs/enums/clinic.enum';
+import { DoctorStatus } from '../../libs/enums/doctor.enum';
 import { FOLLOWABLE_MEMBER_TYPES, MemberStatus, MemberType } from '../../libs/enums/member.enum';
 import { T } from '../../libs/types/common';
 import { CacheKeys, shapeIntoMongoObjectId, toDisplayName } from '../../libs/config';
@@ -16,10 +17,10 @@ const DUPLICATE_KEY = 11000;
 const PUBLIC_MEMBER_FIELDS = { _id: 1, memberType: 1, memberFullName: 1, memberImage: 1 };
 
 /**
- * Member follows member. A followed clinic account also moves `clinicFollowers` on its
- * clinic; this service does that through the Clinic model rather than ClinicService,
- * because ClinicModule already depends on this module (for `meFollowed`) and the
- * dependency must stay one-way.
+ * Member follows member. A followed clinic or doctor account also moves `clinicFollowers` /
+ * `doctorFollowers`; this service does that through the Clinic and Doctor models rather than
+ * their services, because ClinicModule and DoctorModule depend on this module (for
+ * `meFollowed`) and the dependency must stay one-way.
  */
 @Injectable()
 export class FollowService {
@@ -27,6 +28,7 @@ export class FollowService {
 		@InjectModel('Follow') private readonly followModel: Model<T>,
 		@InjectModel('Member') private readonly memberModel: Model<T>,
 		@InjectModel('Clinic') private readonly clinicModel: Model<T>,
+		@InjectModel('Doctor') private readonly doctorModel: Model<T>,
 		private readonly cacheService: CacheService,
 	) {}
 
@@ -54,6 +56,21 @@ export class FollowService {
 			if (!clinic) throw new BadRequestException(Messages.FOLLOW_TARGET_INVALID);
 		}
 
+		// A doctor is followable while both the doctor and their clinic are live.
+		let doctor: T | null = null;
+		if (target.memberType === MemberType.DOCTOR) {
+			doctor = await this.doctorModel
+				.findOne({ memberId: followingId, doctorStatus: DoctorStatus.ACTIVE })
+				.lean()
+				.exec();
+			const clinicLive =
+				!!doctor &&
+				!!(await this.clinicModel
+					.exists({ _id: doctor.clinicId, clinicStatus: ClinicStatus.ACTIVE })
+					.exec());
+			if (!clinicLive) throw new BadRequestException(Messages.FOLLOW_TARGET_INVALID);
+		}
+
 		let follow: T;
 		try {
 			follow = (
@@ -75,11 +92,19 @@ export class FollowService {
 				.exec();
 			await this.cacheService.del(CacheKeys.clinicDetail(clinic?._id));
 		}
+		if (doctor) {
+			doctor = await this.doctorModel
+				.findByIdAndUpdate(doctor._id, { $inc: { doctorFollowers: 1 } }, { new: true })
+				.lean()
+				.exec();
+			await this.cacheService.del(CacheKeys.doctorDetail(doctor?._id));
+		}
 
 		return {
 			...follow,
 			followingMember: this.toPublicMember(target),
 			followingClinic: clinic ?? undefined,
+			followingDoctor: doctor ?? undefined,
 		} as Follow;
 	}
 
@@ -104,11 +129,42 @@ export class FollowService {
 				.exec();
 			if (clinic) await this.cacheService.del(CacheKeys.clinicDetail(clinic._id));
 		}
+		if (removed.followingType === MemberType.DOCTOR) {
+			const doctor = await this.doctorModel
+				.findOneAndUpdate(
+					{ memberId: followingId, doctorFollowers: { $gt: 0 } },
+					{ $inc: { doctorFollowers: -1 } },
+					{ new: true },
+				)
+				.lean()
+				.exec();
+			if (doctor) await this.cacheService.del(CacheKeys.doctorDetail(doctor._id));
+		}
 		return true;
 	}
 
-	public async isFollowing(followerId: ObjectId, followingId: ObjectId): Promise<boolean> {
-		return !!(await this.followModel.exists({ followerId, followingId }).exec());
+	/**
+	 * Which of these members does the follower follow? One `$in` query for a page of cards,
+	 * served by the unique { followingId, followerId } index. The caller passes the reference
+	 * field: a clinic card's memberId, a doctor card's memberId, an author's id.
+	 */
+	public async followedIds(followerId: ObjectId, memberIds: unknown[]): Promise<Set<string>> {
+		if (memberIds.length === 0) return new Set();
+		const rows = await this.followModel
+			.find(
+				{
+					followerId,
+					followingId: { $in: memberIds.map((id) => shapeIntoMongoObjectId(String(id))) },
+				},
+				{ followingId: 1 },
+			)
+			.lean()
+			.exec();
+		return new Set(rows.map((row) => String(row.followingId)));
+	}
+
+	public async isFollowing(followerId: ObjectId, followingId: unknown): Promise<boolean> {
+		return (await this.followedIds(followerId, [followingId])).has(String(followingId));
 	}
 
 	/**
@@ -153,6 +209,28 @@ export class FollowService {
 								},
 							},
 							{ $unwind: { path: '$followingClinic', preserveNullAndEmptyArrays: true } },
+							{
+								$lookup: {
+									from: 'doctors',
+									localField: 'followingId',
+									foreignField: 'memberId',
+									pipeline: [
+										{ $match: { doctorStatus: DoctorStatus.ACTIVE } },
+										{
+											$lookup: {
+												from: 'clinics',
+												localField: 'clinicId',
+												foreignField: '_id',
+												pipeline: [{ $match: { clinicStatus: ClinicStatus.ACTIVE } }],
+												as: 'clinicData',
+											},
+										},
+										{ $unwind: '$clinicData' },
+									],
+									as: 'followingDoctor',
+								},
+							},
+							{ $unwind: { path: '$followingDoctor', preserveNullAndEmptyArrays: true } },
 						],
 						metaCounter: [...typeMatch, { $count: 'total' }],
 						typeCounts: [

@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-06, after M2 merged into `develop`._
+_Last updated: 2026-10-07, M3 + M3.1 built on `feature/doctor`, waiting for the user's Postman run._
 
 ## The project
 
@@ -25,7 +25,7 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M0 | Skeleton — monorepo, Atlas, Redis, GraphQL, guards | ✅ done |
 | M1 | Member + Auth — `members`, `sessions`, refresh rotation, admin | ✅ done, merged (`2892148`) |
 | M2 | Clinic — AGENT CRUD, admin verification, list/detail, follow/like/view | ✅ done, merged (`eb6a1fa`) |
-| **M3** | **Doctor — accounts created by the clinic** | **next** |
+| **M3** | **Doctor — accounts created by the clinic** (+ M3.1: shared `likeTarget`, flags on cards) | **built on `feature/doctor`; Newman 417/417 green; user's Postman run pending** |
 | M4 | Treatment — `doctorIds[]` | |
 | M5 | Slot + Booking — atomic hold, transactions, state machine, consent | |
 | M6 | Review — only after a COMPLETED booking | |
@@ -34,16 +34,25 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
 
-## Next step: M3 — start with the `doctors` collection review
+## Next step
 
-Bring these into the review:
+1. **The user runs `M2 — Clinic` and `M3 — Doctor` in Postman** (M3.1 changed tests in both). After they pass,
+   `feature/doctor` merges into `develop` with `--no-ff`.
+2. **M4 — Treatment**, starting with the `treatments` collection review. Bring in:
+   - `doctorIds[]` must hold doctors of the same clinic, at least one, all not DELETE.
+   - `clinicMinPrice` (deferred from M2) — the lowest ACTIVE treatment price, kept in step on
+     every treatment write.
+   - "Treatments 4" in the clinic's doctor table and "Treatments by Dr. Han" on the doctor page
+     are queries on `treatments.doctorIds`, not stored counters.
+   - Treatment names in clinic search: a second Atlas Search index or a copied name list.
+   - Admin review of treatments (`TreatmentStatus` PENDING → ACTIVE / REJECTED) — same
+     state-machine-in-the-filter pattern as clinics.
 
-- `doctorFollowers` on `doctors` — `FollowService` already accepts DOCTOR targets; it needs the
-  `$inc`, like the AGENT branch.
-- `LikeGroup.DOCTOR` / `ViewGroup.DOCTOR` and the Doctors tabs of Favorites / Recently Visited.
-- Doctor accounts are created by the clinic: `MemberService.createEmailMember(…, session)` +
-  the doctor row in one transaction, `memberMustChangePassword: true`.
-- `clinicDoctors` was dropped in M2 — the detail page counts the doctor list it loads.
+## What M3 left for later
+
+- The obsolete `views` index `{ memberId, viewGroup, updatedAt }` is still in Atlas — Mongoose
+  creates indexes but never drops them. Drop it once (Compass → views → Indexes).
+- `memberMustChangePassword` is not enforced by the server (see DECISIONS).
 
 ## What M2 left for later
 

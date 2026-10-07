@@ -28,6 +28,14 @@ body:
         }
       }
 scripts:
+  - type: beforeRequest
+    code: |-
+      // Atlas Search is eventually consistent: the clinic approved and edited a moment ago
+      // reaches the search index some seconds after the write, and how many varies. So the
+      // request is retried (see the test script) instead of guessing one fixed wait.
+      // Without ATLAS_SEARCH_INDEX the regex reads the collection and the first try passes.
+      setTimeout(() => {}, 2000);
+    language: text/javascript
   - type: afterResponse
     code: |-
       const body = pm.response.json();
@@ -35,11 +43,23 @@ scripts:
       const err = (body.errors && body.errors[0]) || {};
       const msg = err.message || '';
       const code = (err.extensions && err.extensions.code) || '';
-      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
       const page = gql.getClinics || {};
       const c = (page.list || [])[0] || {};
-      // With Atlas Search, clinics from earlier runs also match "postman glow"; the one with
-      // the unique timestamp scores highest. With the regex fallback it is the only match.
-      pm.test('the approved clinic is the best match', () => pm.expect(c._id).to.eql(pm.environment.get('clinicId')));
+      const found = c._id === pm.environment.get('clinicId');
+      const tries = Number(pm.environment.get('searchTries') || 0);
+      const MAX_TRIES = 15; // 15 × 2 s
+      if (!found && !body.errors && tries < MAX_TRIES) {
+        // Not indexed yet: run this same request again; assertions wait for the last try.
+        pm.environment.set('searchTries', String(tries + 1));
+        if (pm.execution && pm.execution.setNextRequest) pm.execution.setNextRequest(pm.info.requestName);
+        else postman.setNextRequest(pm.info.requestName);
+      } else {
+        pm.environment.unset('searchTries');
+        pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+        // With Atlas Search, clinics from earlier runs also match "postman glow"; the one with
+        // the unique timestamp scores highest. With the regex fallback it is the only match.
+        pm.test('the approved clinic is the best match (after ' + tries + ' retries)', () =>
+          pm.expect(c._id, 'search index still behind after ' + MAX_TRIES + ' retries').to.eql(pm.environment.get('clinicId')));
+      }
     language: text/javascript
 order: 27000

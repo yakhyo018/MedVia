@@ -34,6 +34,7 @@ export enum Messages {
 	ALREADY_FOLLOWING = 'You already follow this member!',
 	NOT_FOLLOWING = 'You do not follow this member!',
 	UPLOAD_TARGET_DENIED = 'You cannot upload images for this target!',
+	CLINIC_CANNOT_ADD_DOCTORS = 'A rejected or deleted clinic cannot add doctors!',
 }
 
 export enum Direction {

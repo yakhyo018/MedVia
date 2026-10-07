@@ -1,0 +1,21 @@
+$kind: http-request
+url: '{{baseUrl}}/upload/image?target=doctor'
+method: POST
+headers:
+  Authorization: Bearer {{doctorToken}}
+body:
+  type: formdata
+  content:
+    - key: file
+      type: file
+      src: fixtures/clinic-photo.png
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json() || {};
+      const msg = Array.isArray(body.message) ? body.message.join('; ') : (body.message || '');
+      pm.test('status 201', () => pm.response.to.have.status(201));
+      pm.test('stored under uploads/doctor', () => pm.expect(body.url).to.match(/^uploads\/doctor\//));
+      pm.environment.set('doctorImage', body.url || '');
+    language: text/javascript
+order: 22000
