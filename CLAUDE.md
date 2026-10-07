@@ -114,7 +114,7 @@ Order inside a milestone: review → build → explain + LEARN.md → Postman fo
 ## Validation
 
 ```bash
-npx tsc -p apps/medvia-api/tsconfig.app.json --noEmit
+npx tsc -p apps/medvia-api/tsconfig.json          # app + spec files (tsconfig.app.json is for the build)
 npx tsc -p apps/medvia-batch/tsconfig.app.json --noEmit
 npm run build
 npm run lint:check

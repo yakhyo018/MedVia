@@ -11,7 +11,7 @@
 		"start:dev:batch": "nest start medvia-batch --watch",
 		"start:prod": "NODE_ENV=production node dist/apps/medvia-api/main",
 		"start:prod:batch": "NODE_ENV=production node dist/apps/medvia-batch/main",
-		"typecheck": "tsc -p apps/medvia-api/tsconfig.app.json --noEmit && tsc -p apps/medvia-batch/tsconfig.app.json --noEmit",
+		"typecheck": "tsc -p apps/medvia-api/tsconfig.json && tsc -p apps/medvia-batch/tsconfig.app.json --noEmit",
 		"lint:check": "eslint \"apps/**/*.ts\"",
 		"lint:fix": "eslint \"apps/**/*.ts\" --fix",
 		"format": "prettier --write \"apps/**/*.ts\"",
