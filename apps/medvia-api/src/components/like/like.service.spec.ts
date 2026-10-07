@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
-import { Types } from 'mongoose';
+import { ObjectId, Types } from 'mongoose';
 import { LikeService, LikeTargetHandler } from './like.service';
 import { LikeGroup } from '../../libs/enums/like.enum';
 
@@ -58,9 +58,10 @@ describe('LikeService.toggleLike — the write decides, not a prior read', () =>
 
 describe('LikeService.likeTarget — handlers registered by the target modules', () => {
 	const handler = (): jest.Mocked<LikeTargetHandler> => ({
-		isLikeable: jest.fn(async () => true),
-		moveLikes: jest.fn(async (_id, modifier) => 10 + modifier),
-		countLikes: jest.fn(async () => 10),
+		// Typed like the interface, so the mock checks the same arguments the real handler gets.
+		isLikeable: jest.fn<Promise<boolean>, [ObjectId]>(async () => true),
+		moveLikes: jest.fn<Promise<number>, [ObjectId, number]>(async (_id, modifier) => 10 + modifier),
+		countLikes: jest.fn<Promise<number>, [ObjectId]>(async () => 10),
 	});
 
 	it('a group nobody registered is a bad request', async () => {

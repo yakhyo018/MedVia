@@ -1294,6 +1294,23 @@ other way round — break the feature, watch the test go red, restore:
 
 This is **mutation testing** done by hand; tools such as Stryker automate it.
 
+### 6. Green tests, red editor: who checks the types of a test?
+
+After M4.1 the editor showed errors in every spec file ("Cannot find name 'jest'") and two real
+type errors in `like.service.spec.ts` — while `npm test` passed 39/39. Two separate gaps:
+
+- **ts-jest did not type-check.** The root `tsconfig.json` has `isolatedModules: true`, so ts-jest
+  compiles each file on its own and only strips types; a wrong type in a test never fails a run.
+- **No project included the specs.** `tsconfig.app.json` (the build) excludes `**/*spec.ts` on
+  purpose, and `npm run typecheck` used it, so nothing ever type-checked the tests and the editor
+  had no project telling it that `jest` globals exist.
+
+Fix: `apps/medvia-api/tsconfig.json` — the file the editor picks for everything under
+`apps/medvia-api` — includes `src/**/*` with `"types": ["node", "jest"]` and `noEmit`.
+`npm run typecheck` now uses it, so app code and tests are type-checked together; the build keeps
+`tsconfig.app.json`. Checked the same way as the tests: a deliberate type error in a spec now fails
+`npm run typecheck`.
+
 ### Interview questions and answers
 
 **1. What is the testing pyramid, and where do your Postman and Jest tests sit on it?**
