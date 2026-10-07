@@ -95,6 +95,13 @@ export class Clinic {
 	@Field(() => Int)
 	clinicViews!: number;
 
+	/** Average of the ACTIVE reviews. Absent on clinics nobody has reviewed since M6. */
+	@Field(() => Float, { nullable: true })
+	clinicRating?: number;
+
+	@Field(() => Int, { nullable: true })
+	clinicReviews?: number;
+
 	@Field(() => String)
 	memberId!: ObjectId;
 

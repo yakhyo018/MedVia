@@ -1,0 +1,27 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query MY($input: OrdinaryInquiry!) { getMyReviews(input: $input) { list { _id reviewStatus reviewRating reviewTags reviewFlags reviewContent reviewLang reviewNote submittedAt bookingId patientName clinicName doctorName treatmentName visitDate reviewReply { replyContent replyLang replierType repliedAt } } metaCounter { total } } }
+    variables: |-
+      { "input": { "page": 1, "limit": 10 } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const r = ((gql.getMyReviews || {}).list || [])[0] || {};
+      pm.test('note and flags for the patient', () => pm.expect([r.reviewStatus, r.reviewNote, r.reviewFlags]).to.eql(['EDIT_REQUESTED', 'Please remove the promise of guaranteed results.', ['GUARANTEED_RESULT', 'SUPERLATIVE_CLAIM']]));
+      pm.test('names on the card', () => pm.expect([r.patientName, r.doctorName, r.treatmentName]).to.eql(['Feride K.', 'Han Seo-yeon', pm.environment.get('rTreatmentName')]));
+    language: text/javascript
+order: 38000

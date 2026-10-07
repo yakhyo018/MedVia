@@ -38,6 +38,9 @@ export const envValidationSchema = Joi.object({
 	// `openssl rand -base64 32`. Losing it makes every stored questionnaire unreadable.
 	MEDICAL_ENC_KEY: Joi.string().base64().length(44).required(),
 
+	// "true" registers the Postman-only test helpers (devShiftBookingTime). Ignored in production.
+	ENABLE_TEST_SUPPORT: Joi.string().valid('true', 'false', '').optional(),
+
 	// Added in later milestones; optional for now.
 	GOOGLE_CLIENT_ID: Joi.string().allow('').optional(),
 }).unknown(true);

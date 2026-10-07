@@ -102,6 +102,9 @@ export class Booking {
 	@Field(() => Date, { nullable: true })
 	completedAt?: Date;
 
+	@Field(() => Boolean, { nullable: true })
+	bookingReviewed?: boolean;
+
 	@Field(() => String)
 	memberId!: ObjectId;
 

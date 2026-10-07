@@ -374,6 +374,14 @@ export class DoctorService implements OnModuleInit {
 			.exec();
 	}
 
+	/** Written by the review module: the recomputed average and count, as a whole $set. */
+	public async setReviewSummary(doctorId: unknown, rating: number, reviews: number): Promise<void> {
+		await this.doctorModel
+			.updateOne({ _id: doctorId }, { $set: { doctorRating: rating, doctorReviews: reviews } })
+			.exec();
+		await this.invalidateDoctor(doctorId);
+	}
+
 	/* ───────────────────────── admin ───────────────────────── */
 
 	public async getAllDoctorsByAdmin(input: AdminDoctorsInquiry): Promise<Doctors> {

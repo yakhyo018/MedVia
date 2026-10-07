@@ -15,6 +15,9 @@ export enum AuditAction {
 	TREATMENT_EDIT_APPROVE = 'TREATMENT_EDIT_APPROVE',
 	TREATMENT_EDIT_REJECT = 'TREATMENT_EDIT_REJECT',
 	BOOKING_CANCEL = 'BOOKING_CANCEL',
+	REVIEW_APPROVE = 'REVIEW_APPROVE',
+	REVIEW_REQUEST_CHANGES = 'REVIEW_REQUEST_CHANGES',
+	REVIEW_HIDE = 'REVIEW_HIDE',
 }
 registerEnumType(AuditAction, { name: 'AuditAction' });
 
@@ -23,6 +26,7 @@ export enum AuditGroup {
 	DOCTOR = 'DOCTOR',
 	TREATMENT = 'TREATMENT',
 	BOOKING = 'BOOKING',
+	REVIEW = 'REVIEW',
 }
 registerEnumType(AuditGroup, { name: 'AuditGroup' });
 

@@ -109,9 +109,15 @@ const BookingSchema = new Schema(
 			required: true,
 		},
 
-		// M6: a review needs a COMPLETED booking.
+		// A review needs a COMPLETED booking, written within 30 days of this.
 		completedAt: {
 			type: Date,
+		},
+
+		// Set with the review, in its transaction, and never reset: a deleted review is final.
+		bookingReviewed: {
+			type: Boolean,
+			default: false,
 		},
 
 		memberId: {
