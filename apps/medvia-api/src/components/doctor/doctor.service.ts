@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model, ObjectId, PipelineStage, Types } from 'mongoose';
 import { createHash } from 'crypto';
@@ -65,7 +65,7 @@ const lookupMember: PipelineStage.FacetPipelineStage[] = [
 ];
 
 @Injectable()
-export class DoctorService {
+export class DoctorService implements OnModuleInit {
 	constructor(
 		@InjectModel('Doctor') private readonly doctorModel: Model<Doctor>,
 		@InjectConnection() private readonly connection: Connection,
@@ -77,6 +77,20 @@ export class DoctorService {
 		private readonly auditLogService: AuditLogService,
 		private readonly cacheService: CacheService,
 	) {}
+
+	/** The doctor's answer to likeTarget(DOCTOR): visible doctors only, counter in doctorLikes. */
+	public onModuleInit(): void {
+		this.likeService.registerTarget(LikeGroup.DOCTOR, {
+			isLikeable: async (_id) => !!(await this.findVisibleDoctor(_id)),
+			moveLikes: async (_id, modifier) => {
+				const doctor = await this.doctorStatsEditor({ _id, targetKey: 'doctorLikes', modifier });
+				await this.cacheService.del(CacheKeys.doctorDetail(_id));
+				return doctor?.doctorLikes ?? 0;
+			},
+			countLikes: async (_id) =>
+				(await this.doctorModel.findById(_id, { doctorLikes: 1 }).lean().exec())?.doctorLikes ?? 0,
+		});
+	}
 
 	/* ───────────────────────── clinic account ───────────────────────── */
 
@@ -282,11 +296,12 @@ export class DoctorService {
 		return { ...doctor, meLiked, meFollowed } as Doctor;
 	}
 
-	public async getDoctors(input: DoctorsInquiry): Promise<Doctors> {
+	public async getDoctors(authMember: AuthMember | null, input: DoctorsInquiry): Promise<Doctors> {
 		const hash = createHash('sha1').update(JSON.stringify(input)).digest('hex');
-		return await this.cacheService.wrap(CacheKeys.doctorList(hash), LIST_TTL_SECONDS, () =>
+		const page = await this.cacheService.wrap(CacheKeys.doctorList(hash), LIST_TTL_SECONDS, () =>
 			this.loadDoctors(input),
 		);
+		return { ...page, list: await this.withViewerFlags(authMember, page.list) };
 	}
 
 	/**
@@ -329,24 +344,6 @@ export class DoctorService {
 			.exec();
 
 		return result[0] as Doctors;
-	}
-
-	public async likeTargetDoctor(memberId: ObjectId, doctorId: string): Promise<Doctor> {
-		const _id = this.toObjectId(doctorId);
-		if (!(await this.findVisibleDoctor(_id))) throw new NotFoundException(Messages.NO_DATA_FOUND);
-
-		const modifier = await this.likeService.toggleLike({
-			memberId,
-			likeGroup: LikeGroup.DOCTOR,
-			likeRefId: _id,
-		});
-		const doctor =
-			modifier !== 0
-				? await this.doctorStatsEditor({ _id, targetKey: 'doctorLikes', modifier })
-				: await this.doctorModel.findById(_id).lean().exec();
-
-		await this.cacheService.del(CacheKeys.doctorDetail(_id));
-		return { ...doctor, meLiked: modifier >= 0 } as Doctor;
 	}
 
 	public async getFavoriteDoctors(memberId: ObjectId, input: OrdinaryInquiry): Promise<Doctors> {
@@ -425,6 +422,26 @@ export class DoctorService {
 		if (!doctor) return null;
 		const clinicData = await this.clinicService.findActiveClinic(doctor.clinicId);
 		return clinicData ? { ...doctor, clinicData } : null;
+	}
+
+	/** Same as on clinic cards: per viewer, after the cache, one `$in` query each per page. */
+	private async withViewerFlags(authMember: AuthMember | null, list: Doctor[]): Promise<Doctor[]> {
+		if (!authMember || list.length === 0) return list;
+		const [liked, followed] = await Promise.all([
+			this.likeService.likedIds(
+				authMember._id,
+				list.map((doctor) => doctor._id),
+			),
+			this.followService.followedIds(
+				authMember._id,
+				list.map((doctor) => doctor.memberId),
+			),
+		]);
+		return list.map((doctor) => ({
+			...doctor,
+			meLiked: liked.has(String(doctor._id)),
+			meFollowed: followed.has(String(doctor.memberId)),
+		}));
 	}
 
 	private async ownClinic(agentId: ObjectId): Promise<T> {

@@ -134,24 +134,17 @@ export class DoctorResolver {
 		return await this.doctorService.getDoctor(authMember, doctorId);
 	}
 
+	@UseGuards(WithoutGuard)
 	@Query(() => Doctors)
-	public async getDoctors(@Args('input') input: DoctorsInquiry): Promise<Doctors> {
+	public async getDoctors(
+		@Args('input') input: DoctorsInquiry,
+		@AuthMember() authMember: AuthMemberType | null,
+	): Promise<Doctors> {
 		console.log('Query: getDoctors');
-		return await this.doctorService.getDoctors(input);
+		return await this.doctorService.getDoctors(authMember, input);
 	}
 
 	/** PATIENT **/
-
-	@Roles(MemberType.USER)
-	@UseGuards(RolesGuard)
-	@Mutation(() => Doctor)
-	public async likeTargetDoctor(
-		@Args('doctorId') doctorId: string,
-		@AuthMember('_id') memberId: ObjectId,
-	): Promise<Doctor> {
-		console.log('Mutation: likeTargetDoctor');
-		return await this.doctorService.likeTargetDoctor(memberId, doctorId);
-	}
 
 	@UseGuards(AuthGuard)
 	@Query(() => Doctors)

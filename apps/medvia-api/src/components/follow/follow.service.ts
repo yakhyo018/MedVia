@@ -143,8 +143,28 @@ export class FollowService {
 		return true;
 	}
 
-	public async isFollowing(followerId: ObjectId, followingId: ObjectId): Promise<boolean> {
-		return !!(await this.followModel.exists({ followerId, followingId }).exec());
+	/**
+	 * Which of these members does the follower follow? One `$in` query for a page of cards,
+	 * served by the unique { followingId, followerId } index. The caller passes the reference
+	 * field: a clinic card's memberId, a doctor card's memberId, an author's id.
+	 */
+	public async followedIds(followerId: ObjectId, memberIds: unknown[]): Promise<Set<string>> {
+		if (memberIds.length === 0) return new Set();
+		const rows = await this.followModel
+			.find(
+				{
+					followerId,
+					followingId: { $in: memberIds.map((id) => shapeIntoMongoObjectId(String(id))) },
+				},
+				{ followingId: 1 },
+			)
+			.lean()
+			.exec();
+		return new Set(rows.map((row) => String(row.followingId)));
+	}
+
+	public async isFollowing(followerId: ObjectId, followingId: unknown): Promise<boolean> {
+		return (await this.followedIds(followerId, [followingId])).has(String(followingId));
 	}
 
 	/**

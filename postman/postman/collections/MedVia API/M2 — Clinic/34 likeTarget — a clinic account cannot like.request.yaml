@@ -8,11 +8,11 @@ body:
   type: graphql
   content:
     query: |-
-      mutation LikeTargetDoctor($doctorId: String!) {
-        likeTargetDoctor(doctorId: $doctorId) { _id doctorLikes meLiked }
+      mutation LikeTarget($input: LikeTargetInput!) {
+        likeTarget(input: $input) { likeGroup likeRefId meLiked likes }
       }
     variables: |-
-      { "doctorId": "{{doctorId}}" }
+      { "input": { "likeGroup": "CLINIC", "likeRefId": "{{clinicId}}" } }
 scripts:
   - type: afterResponse
     code: |-
@@ -24,4 +24,4 @@ scripts:
       pm.test('refused: Allowed only for members with specific roles!', () => pm.expect(msg).to.include("Allowed only for members with specific roles!"));
       pm.test('code FORBIDDEN', () => pm.expect(code).to.eql('FORBIDDEN'));
     language: text/javascript
-order: 32000
+order: 34000

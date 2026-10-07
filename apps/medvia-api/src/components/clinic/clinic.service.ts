@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model, ObjectId, PipelineStage, Types } from 'mongoose';
 import { createHash } from 'crypto';
@@ -44,7 +44,7 @@ const ACTIVE_IDS_TTL_SECONDS = 60;
 const LOCKED_FIELDS = ['clinicName', 'clinicNameKo', 'clinicDistrict', 'clinicAddress'] as const;
 
 @Injectable()
-export class ClinicService {
+export class ClinicService implements OnModuleInit {
 	constructor(
 		@InjectModel('Clinic') private readonly clinicModel: Model<Clinic>,
 		@InjectConnection() private readonly connection: Connection,
@@ -56,6 +56,22 @@ export class ClinicService {
 		private readonly auditLogService: AuditLogService,
 		private readonly cacheService: CacheService,
 	) {}
+
+	/** The clinic's answer to likeTarget(CLINIC): only ACTIVE clinics, counter in clinicLikes. */
+	public onModuleInit(): void {
+		this.likeService.registerTarget(LikeGroup.CLINIC, {
+			isLikeable: async (_id) =>
+				!!(await this.clinicModel.exists({ _id, clinicStatus: ClinicStatus.ACTIVE }).exec()),
+			moveLikes: async (_id, modifier) => {
+				const clinic = await this.clinicStatsEditor({ _id, targetKey: 'clinicLikes', modifier });
+				// The page shows the count next to the heart; a stale cached count would contradict it.
+				await this.cacheService.del(CacheKeys.clinicDetail(_id));
+				return clinic?.clinicLikes ?? 0;
+			},
+			countLikes: async (_id) =>
+				(await this.clinicModel.findById(_id, { clinicLikes: 1 }).lean().exec())?.clinicLikes ?? 0,
+		});
+	}
 
 	/* ───────────────────────── clinic account ───────────────────────── */
 
@@ -204,14 +220,27 @@ export class ClinicService {
 	}
 
 	/**
-	 * Cached per distinct filter set. The key is a hash of the input, so the same filters
-	 * hit the same entry; any change to any clinic drops every list entry (invalidateClinic).
+	 * Browsing (filters only) is cached per distinct filter set: the key is a hash of the
+	 * input, and any change to any clinic drops every list entry (invalidateClinic).
+	 *
+	 * Text searches are not cached. Almost every one is different, so they rarely hit; and
+	 * Atlas Search lags the collection by a few seconds, so a search made right after a clinic
+	 * goes live could cache "not found" for the whole TTL — the cache would freeze the
+	 * eventual-consistency gap instead of letting it close.
 	 */
-	public async getClinics(input: ClinicsInquiry): Promise<Clinics> {
-		const hash = createHash('sha1').update(JSON.stringify(input)).digest('hex');
-		return await this.cacheService.wrap(CacheKeys.clinicList(hash), LIST_TTL_SECONDS, () =>
-			this.loadClinics(input),
-		);
+	public async getClinics(authMember: AuthMember | null, input: ClinicsInquiry): Promise<Clinics> {
+		const page = input.search?.text?.trim()
+			? await this.loadClinics(input)
+			: await this.cacheService.wrap(
+					CacheKeys.clinicList(this.hashInput(input)),
+					LIST_TTL_SECONDS,
+					() => this.loadClinics(input),
+				);
+		return { ...page, list: await this.withViewerFlags(authMember, page.list) };
+	}
+
+	private hashInput(input: ClinicsInquiry): string {
+		return createHash('sha1').update(JSON.stringify(input)).digest('hex');
 	}
 
 	private async loadClinics(input: ClinicsInquiry): Promise<Clinics> {
@@ -277,7 +306,15 @@ export class ClinicService {
 	 * Same specialty, nearest first, when the clinic has a map pin; otherwise the most
 	 * liked clinics of the same specialty in the same district.
 	 */
-	public async getNearbyClinics(clinicId: string, limit: number): Promise<Clinic[]> {
+	public async getNearbyClinics(
+		authMember: AuthMember | null,
+		clinicId: string,
+		limit: number,
+	): Promise<Clinic[]> {
+		return await this.withViewerFlags(authMember, await this.loadNearbyClinics(clinicId, limit));
+	}
+
+	private async loadNearbyClinics(clinicId: string, limit: number): Promise<Clinic[]> {
 		const _id = this.toObjectId(clinicId);
 		const base = await this.clinicModel
 			.findOne({ _id, clinicStatus: ClinicStatus.ACTIVE })
@@ -318,27 +355,6 @@ export class ClinicService {
 	}
 
 	/* ───────────────────────── patient activity ───────────────────────── */
-
-	public async likeTargetClinic(memberId: ObjectId, clinicId: string): Promise<Clinic> {
-		const _id = this.toObjectId(clinicId);
-		const exists = await this.clinicModel.exists({ _id, clinicStatus: ClinicStatus.ACTIVE }).exec();
-		if (!exists) throw new NotFoundException(Messages.NO_DATA_FOUND);
-
-		const modifier = await this.likeService.toggleLike({
-			memberId,
-			likeGroup: LikeGroup.CLINIC,
-			likeRefId: _id,
-		});
-
-		const clinic =
-			modifier !== 0
-				? await this.clinicStatsEditor({ _id, targetKey: 'clinicLikes', modifier })
-				: await this.clinicModel.findById(_id).lean().exec();
-
-		// The page shows the count next to the heart; a stale cached count would contradict it.
-		await this.cacheService.del(CacheKeys.clinicDetail(_id));
-		return { ...clinic, meLiked: modifier >= 0 } as Clinic;
-	}
 
 	public async getFavoriteClinics(memberId: ObjectId, input: OrdinaryInquiry): Promise<Clinics> {
 		return await this.likeService.getFavoriteClinics(memberId, input);
@@ -571,6 +587,30 @@ export class ClinicService {
 				return { day: h.day, open: h.open, close: h.close, closed: false };
 			})
 			.sort((a, b) => a.day - b.day);
+	}
+
+	/**
+	 * The heart and the follow button on every card. Applied after the cache — the cached page
+	 * is the same for everyone, these two flags are not — with one `$in` query each for the
+	 * whole page. Guests cost nothing.
+	 */
+	private async withViewerFlags(authMember: AuthMember | null, list: Clinic[]): Promise<Clinic[]> {
+		if (!authMember || list.length === 0) return list;
+		const [liked, followed] = await Promise.all([
+			this.likeService.likedIds(
+				authMember._id,
+				list.map((clinic) => clinic._id),
+			),
+			this.followService.followedIds(
+				authMember._id,
+				list.map((clinic) => clinic.memberId),
+			),
+		]);
+		return list.map((clinic) => ({
+			...clinic,
+			meLiked: liked.has(String(clinic._id)),
+			meFollowed: followed.has(String(clinic.memberId)),
+		}));
 	}
 
 	/** An id that is not an ObjectId cannot exist — answered before it reaches the cache or Mongo. */

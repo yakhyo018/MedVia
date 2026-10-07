@@ -8,11 +8,11 @@ body:
   type: graphql
   content:
     query: |-
-      mutation LikeTargetClinic($clinicId: String!) {
-        likeTargetClinic(clinicId: $clinicId) { _id clinicLikes meLiked }
+      mutation LikeTarget($input: LikeTargetInput!) {
+        likeTarget(input: $input) { likeGroup likeRefId meLiked likes }
       }
     variables: |-
-      { "clinicId": "{{clinicId}}" }
+      { "input": { "likeGroup": "CLINIC", "likeRefId": "{{clinicId}}" } }
 scripts:
   - type: afterResponse
     code: |-
@@ -22,8 +22,7 @@ scripts:
       const msg = err.message || '';
       const code = (err.extensions && err.extensions.code) || '';
       pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
-      const c = gql.likeTargetClinic || {};
-      pm.test('clinicLikes back to 0', () => pm.expect(c.clinicLikes).to.eql(0));
-      pm.test('meLiked false', () => pm.expect(c.meLiked).to.eql(false));
+      const r = gql.likeTarget || {};
+      pm.test('likes back to 0, meLiked false', () => pm.expect([r.likes, r.meLiked]).to.eql([0, false]));
     language: text/javascript
 order: 47000
