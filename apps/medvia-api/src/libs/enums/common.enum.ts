@@ -40,6 +40,23 @@ export enum Messages {
 	TREATMENT_NEEDS_DOCTOR = 'Assign at least one doctor before showing this treatment!',
 	DRAFT_CHANGED = 'The clinic changed this edit while you were reviewing it, please reload!',
 	NOTHING_TO_REVIEW = 'There is nothing waiting for review on this treatment!',
+
+	SLOT_RANGE_INVALID = 'Slots can be added from today, at most 31 days at a time and 60 days ahead!',
+	SLOT_TIME_INVALID = 'The start time must be before the end time!',
+	SLOT_NOT_AVAILABLE = 'This time is no longer available, please choose another one!',
+	SLOT_TOO_SOON = 'This time starts too soon to book, please choose a later one!',
+	HOLD_EXPIRED = 'Your reserved time has expired, please choose the time again!',
+	TREATMENT_NOT_BOOKABLE = 'This treatment cannot be booked with this doctor!',
+	LANGUAGE_NOT_OFFERED = 'The clinic does not offer this language or interpreter!',
+	CONSENT_REQUIRED = 'Please give the required consents to send the request!',
+	TOO_MANY_REQUESTS = 'You already have 3 requests waiting for clinics!',
+	TRANSITION_NOT_ALLOWED = 'This booking cannot be changed this way!',
+	REASON_REQUIRED = 'Please write the reason!',
+	CANCEL_TOO_LATE = 'A confirmed booking can be cancelled up to 24 hours before the visit!',
+	VISIT_NOT_STARTED = 'This can be set only after the visit time has started!',
+	VISIT_STARTED = 'The visit time has already started!',
+	RESPOND_DEADLINE_PASSED = 'The time to answer this request has passed!',
+	DOCTOR_HAS_BOOKINGS = 'This doctor still has upcoming bookings, cancel or finish them first!',
 }
 
 export enum Direction {

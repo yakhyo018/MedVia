@@ -1,0 +1,23 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation C($input: SlotsCreateInput!) { createSlots(input: $input) { created planned } }
+    variables: |-
+      { "input": { "doctorId": "{{doctorAId}}", "dateFrom": "{{slotDate}}", "dateTo": "{{slotDate}}", "timeFrom": "10:00", "timeTo": "12:00" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test("refused: Bearer token is not provided!", () => pm.expect(msg).to.include("Bearer token is not provided!"));
+    language: text/javascript
+order: 14000

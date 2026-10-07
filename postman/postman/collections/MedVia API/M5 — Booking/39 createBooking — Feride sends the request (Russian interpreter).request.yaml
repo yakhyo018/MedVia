@@ -1,0 +1,32 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation CB($input: BookingCreateInput!) { createBooking(input: $input) { _id bookingCode bookingStatus bookingDate bookingPrice bookingLang bookingInterpreter bookingDeclineReason cancelledBy respondDeadline slotIds patientName bookingHistory { status reason } bookingConsents { consentType agreed version } bookingQuestionnaire { originalLang answers { question answer } } clinicData { clinicName } doctorData { doctorName } treatmentData { treatmentName } } }
+    variables: |-
+      { "input": { "treatmentId": "{{treatmentId}}", "doctorId": "{{doctorAId}}", "slotStart": "{{t1000}}", "bookingLang": "RU", "bookingInterpreter": "RU", "questionnaire": { "originalLang": "RU", "answers": [ { "question": "What would you like to treat?", "answer": "Пигментация на щеках" }, { "question": "Allergies or current medication", "answer": "Аллергия на пенициллин" } ] }, "consents": [ { "consentType": "SHARE_DATA", "agreed": true }, { "consentType": "BOOKING_TERMS", "agreed": true } ] } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const b = gql.createBooking || {};
+      pm.test('PENDING', () => pm.expect(b.bookingStatus).to.eql('PENDING'));
+      pm.test('price copied from the treatment', () => pm.expect(b.bookingPrice).to.eql(150000));
+      pm.test('code MV-YYYY-NNNNNN', () => pm.expect(b.bookingCode || '').to.match(/^MV-\d{4}-\d{6}$/));
+      pm.test('two slots', () => pm.expect(b.slotIds || []).to.have.lengthOf(2));
+      pm.test('consents stamped with the server version', () => pm.expect((b.bookingConsents || []).map((c) => c.version)).to.eql(['share-v1', 'terms-v1']));
+      pm.test('deadline before the visit', () => pm.expect(new Date(b.respondDeadline) < new Date(b.bookingDate)).to.be.true);
+      pm.environment.set('bookingId', b._id || '');
+    language: text/javascript
+order: 39000

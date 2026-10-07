@@ -1,0 +1,28 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation H($input: SlotHoldInput!) { holdSlots(input: $input) { slotIds slotStart holdExpiresAt } }
+    variables: |-
+      { "input": { "treatmentId": "{{treatmentId}}", "doctorId": "{{doctorAId}}", "slotStart": "{{t1000}}" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const h = gql.holdSlots || {};
+      pm.test('two slots held', () => pm.expect(h.slotIds || []).to.have.lengthOf(2));
+      const minutes = (new Date(h.holdExpiresAt) - Date.now()) / 60000;
+      pm.test('the hold runs about 10 minutes', () => pm.expect(minutes).to.be.within(8, 11));
+    language: text/javascript
+order: 30000

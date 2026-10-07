@@ -30,6 +30,7 @@ import { ViewService } from '../view/view.service';
 import { FollowService } from '../follow/follow.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { TreatmentService } from '../treatment/treatment.service';
+import { BookingService } from '../booking/booking.service';
 
 const LIST_TTL_SECONDS = 60;
 const DETAIL_TTL_SECONDS = 60;
@@ -77,6 +78,7 @@ export class DoctorService implements OnModuleInit {
 		private readonly followService: FollowService,
 		private readonly auditLogService: AuditLogService,
 		private readonly treatmentService: TreatmentService,
+		private readonly bookingService: BookingService,
 		private readonly cacheService: CacheService,
 	) {}
 
@@ -184,10 +186,16 @@ export class DoctorService implements OnModuleInit {
 	 * transaction (a treatment left without doctors is hidden). Sign-out happens after the
 	 * commit. Follows, likes and views stay as history — every list already drops a doctor
 	 * that is not ACTIVE.
+	 *
+	 * Refused while a request waits or a confirmed visit is ahead: those patients would be left
+	 * with a booking nobody performs. The clinic declines or cancels them first.
 	 */
 	public async removeDoctor(agentId: ObjectId, doctorId: string): Promise<Doctor> {
 		const clinic = await this.ownClinic(agentId);
 		const _id = this.toObjectId(doctorId);
+		if (await this.bookingService.hasUpcomingBookings(clinic._id, _id)) {
+			throw new BadRequestException(Messages.DOCTOR_HAS_BOOKINGS);
+		}
 
 		const session = await this.connection.startSession();
 		let doctor: T | null = null;
