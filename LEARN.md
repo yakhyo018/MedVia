@@ -1332,3 +1332,187 @@ Fake the outcome of the race instead of racing: a fake model whose `create` thro
 **5. Your tests are green. How do you know they would turn red if the feature broke?**
 
 Break the feature on purpose, watch the test go red, restore it. In M4.1 the price rule, single-flight and the miss sentinel were each broken and each was caught by its own test — mutation testing by hand; Stryker automates it.
+
+---
+
+## M5 — Slot + Booking
+
+### 1. The slot is the lock
+
+Two patients pick Tue 22 Sep 10:00 with Dr. Han at the same second. Exactly one may get it.
+
+The slot document itself is the lock. Taking it is one **conditional write**: "set HELD *if* it is
+still free". The condition and the change happen in one atomic step inside MongoDB, so there is no
+gap between "check" and "write" for the other request to slip through (no TOCTOU):
+
+```ts
+updateMany(
+	{ _id: { $in: slotIds }, $or: [{ slotStatus: 'OPEN' }, { slotStatus: 'HELD', holdExpiresAt: { $lte: now } }] },
+	{ $set: { slotStatus: 'HELD', holdMemberId, holdExpiresAt: now + 10 min } },
+)
+// modifiedCount !== slotIds.length → throw → the transaction rolls back
+```
+
+A 60-minute treatment needs **two** slots (`ceil(60 / 30)`). If 10:00 is free and 10:30 is not,
+`updateMany` would take one and leave the patient with half a booking. That is why it runs in a
+**transaction**: fewer than n changed → throw → nothing is held.
+
+The race in detail: both transactions write the same slot document. MongoDB lets the first commit
+and gives the second a `WriteConflict`; `withTransaction` retries it automatically, the "free"
+filter no longer matches, `modifiedCount` is short, and the second patient gets
+"This time is no longer available". The Postman suite replays it: Feride holds 10:00, Timur's hold
+on 10:30 (which overlaps) is refused.
+
+Why not Redis `SETNX`? The slot and the booking must change together. A lock in Redis and the
+booking in MongoDB are two systems that can disagree, and the failure mode is a double-booked
+patient. Redis stays cache and queue only.
+
+The unique index `{ doctorId, slotStart }` is a second guard of a different kind: it makes
+"Add slots" idempotent. Slots are created with an upsert per time (`$setOnInsert`), so running the
+same request twice creates nothing new and never touches a slot that is already booked.
+
+### 2. Lazy expiry: time-based state without a job
+
+A hold lasts 10 minutes; a request waits at most 24 hours for the clinic. Something has to "free"
+them when time runs out — but the BullMQ job that would do it comes only in M9.
+
+The trick: **do not free them; define them as free.** Every slot carries `holdExpiresAt`, and the
+"free" filter above already accepts a HELD slot whose time has passed. Nothing has to run at 10:10
+for the slot to be available at 10:10. The same for bookings: `effectiveStatus()` reads a PENDING
+booking past its `respondDeadline` as EXPIRED, every list filters it that way (`statusMatch`), and
+the next write that touches it stores EXPIRED for real. M9's job becomes housekeeping, not
+correctness.
+
+One field, two meanings, on purpose: while the form is open `holdExpiresAt` is now + 10 min; once
+the request is sent it becomes the clinic's `respondDeadline`. "When does this hold die?" has one
+answer in one place.
+
+### 3. A state machine as a table
+
+Seven statuses, three actors (patient, clinic, admin), time conditions. Written as `if`s in the
+service this becomes unreadable. Instead `booking.rules.ts` holds a table:
+
+```ts
+PENDING:   { CONFIRMED: [CLINIC], DECLINED: [CLINIC], CANCELLED: [PATIENT, ADMIN] },
+CONFIRMED: { COMPLETED: [CLINIC], NO_SHOW: [CLINIC], CANCELLED: [PATIENT, CLINIC, ADMIN] },
+```
+
+plus a few time rules (a patient cancels a confirmed visit up to 24 hours before; COMPLETED and
+NO_SHOW only after the start; decline needs a reason). Anything not in the table is refused — the
+Jest suite walks every from × to × actor combination (196) and checks the 187 that are not allowed.
+One mutation, `updateBookingStatus`, serves all three actors; a new rule is a row, not a branch.
+
+The actor comes from the token (`USER → PATIENT`, `AGENT → CLINIC`), never from input. A doctor is
+no actor at all: doctors read bookings, the clinic account changes them.
+
+The write is conditional on the status that was read (`{ _id, bookingStatus: 'PENDING' }`), the same
+optimistic check as M4's draft approval: a clinic confirming while the patient cancels — one wins,
+the other gets "not allowed in the current status".
+
+### 4. Scope from the token: one query for four roles, and no IDOR
+
+"My Bookings", the clinic's list, the doctor's list and the admin's list are one query,
+`getBookings`. The filter that decides *whose* bookings is built from the token:
+
+```ts
+USER → { memberId }   AGENT → { clinicId of my clinic }   DOCTOR → { my doctorId }   ADMIN → {}
+```
+
+Input filters (`clinicId`, `doctorId`, status, tab) are **AND**ed onto it — they can only narrow.
+**IDOR** (Insecure Direct Object Reference) is the bug where an API trusts an id from the request:
+`getBookings(clinicId: "someone else's")` returns someone else's data. Here Timur passes the
+clinic's id and still sees only his own bookings — the Postman test was checked by removing the
+scope on purpose: it went red.
+
+Trade-off of one door for four roles: one bug exposes everyone. So the scope is a pure function
+with its own tests, and every role has a "cannot open someone else's booking" case in Postman.
+
+### 5. Field-level encryption of the questionnaire
+
+Atlas already encrypts the disk and the network. That protects against a stolen disk, not against
+someone who can *read* the database: a Compass session, a leaked `mongodump`, a leaked connection
+string. Health data is "sensitive data" under PIPA, so the answers are encrypted by the API before
+they are written:
+
+```
+v1 : <iv, 12 random bytes> : <GCM tag, 16 bytes> : <ciphertext>
+```
+
+- **AES-256-GCM**, Node's own `crypto` — no package. 256-bit key = 32 bytes, from
+  `openssl rand -base64 32`, in `MEDICAL_ENC_KEY`; boot fails unless it is exactly that.
+- **A new IV every time**, so the same answer never encrypts to the same text (no patterns).
+- **The GCM tag** makes it authenticated: one changed byte in the database and decryption throws
+  instead of returning garbage.
+- **`v1`** names the key, so the key can be rotated later without guessing which rows used which.
+- Decryption happens only after the scope check, and only for the patient, the clinic and the
+  doctor of that booking. The admin handles bookings, not medical data. Lists never decrypt.
+
+What it does not protect: a compromised API server holds the key. Encryption guards the database;
+the scope guards the API — neither replaces the other. Losing the key loses every questionnaire.
+
+### 6. Snapshots: what was agreed, not what is true now
+
+`bookingPrice` is a copy of `treatmentPrice` at the moment the request is sent; M4's "a higher
+price applies at once" is safe because of it. Consents are snapshots too: `{ consentType, agreed,
+version: 'share-v1', agreedAt }`, with the version and time stamped by the server — the client only
+says `agreed`. If the text changes to `share-v2`, this booking still proves which text the patient
+accepted. Reference when you want "the current value" (the clinic's logo), snapshot when you want
+"what was agreed" (price, consent).
+
+### 7. Seoul time without a library
+
+Dates are stored in UTC and shown in Asia/Seoul. Korea has no daylight saving time, so Seoul is
+always UTC+9 and the conversion is arithmetic (`Date.parse('2026-09-22T00:00:00Z') + minutes − 9h`),
+not a timezone database. Schedule input is wall-clock (`"2026-09-22"`, `"10:00"`) because that is
+what a clinic means; the server turns it into instants. The trap the tests cover: 08:00 in Seoul is
+the previous day in UTC.
+
+### 8. What Postman cannot test, Jest does
+
+The clock decides half the rules: a request expires after 24 hours, a confirmed visit can be
+cancelled until 24 hours before, COMPLETED only after the start. Postman cannot wait a day, so
+those live in `booking.rules.ts` with the clock as a parameter and are tested there. Postman covers
+what needs the real system: the transaction, the race, the scopes, the encryption round trip.
+
+Checked the M4.1 way — broken on purpose, watched red, restored:
+
+| Broken on purpose | Caught by |
+| --- | --- |
+| a patient may confirm | the table walk, "refuses a patient confirming" |
+| no 24-hour cancel limit | "cancel a confirmed booking only up to 24 hours before" |
+| Seoul offset 0 | every Seoul time test |
+| consents not required | "refuses a required consent missing / not agreed" |
+| a patient's scope is `{}` | Jest "scopes every role" and Postman "no IDOR" |
+| `ceil` → `floor` for slots | "31 minutes → 2 slots" |
+| a fixed IV | "a different value for the same text every time" |
+| the admin gets decrypted answers | Postman "the admin gets no medical answers" |
+
+### Interview questions and answers
+
+**1. Two patients book the same slot at the same moment. What happens?**
+
+The slot is taken with one conditional write inside a transaction: "set HELD if still free". Both transactions write the same document; MongoDB commits one and gives the other a WriteConflict, `withTransaction` retries it, the filter no longer matches, and that patient is told the time is gone. No Redis lock — the slot and the booking must change together in one system.
+
+**2. A 60-minute treatment needs two slots. Why a transaction, and not just `updateMany`?**
+
+`updateMany` is atomic per document, not across documents. If 10:00 is free and 10:30 is not, it would take one and leave half a booking. In a transaction the count is checked, and a short count throws and rolls back everything.
+
+**3. Holds expire after 10 minutes, but you have no background job yet. How do they expire?**
+
+Lazily. The "free" filter treats a HELD slot past `holdExpiresAt` as OPEN, and a PENDING booking past its deadline is read as EXPIRED everywhere, then written as EXPIRED on the next touch. Correctness never waits for a job; M9's job only tidies.
+
+**4. How do you keep a booking state machine maintainable?**
+
+A transition table — from → to → which actors — plus a few time rules, all in pure functions. The service reads the status, asks the table, and writes conditionally on the status it read. A unit test walks every combination of status, status and actor.
+
+**5. One `getBookings` serves patients, clinics, doctors and admins. How is that not an IDOR hole?**
+
+The scope comes from the token, never from input: a patient's filter is always their own `memberId`. Input filters are ANDed on and can only narrow. A test passes another clinic's id as a patient and must get nothing — and it was checked by removing the scope on purpose.
+
+**6. Atlas already encrypts data at rest. Why encrypt the questionnaire yourself?**
+
+Disk encryption protects a stolen disk; anyone who can read the database still sees plain text. Field-level AES-256-GCM in the API means a dump or a Compass session shows only ciphertext. GCM also detects tampering, a random IV hides repeated answers, and a key version allows rotation. The key lives only in the API's environment.
+
+**7. Why does the booking store the price and the consent version instead of referencing them?**
+
+They are facts about the agreement, not current values. The clinic may raise the price or change the consent text tomorrow; the booking must still show what this patient accepted.

@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-07, end of session — M4.1 and the spec type-check fix merged and pushed._
+_Last updated: 2026-10-07 — M5 built on `feature/booking`, waiting for the user's Postman run._
 
 ## The project
 
@@ -28,28 +28,25 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M3 | Doctor — accounts created by the clinic (+ M3.1: shared `likeTarget`, flags on cards) | ✅ done, merged (`a96ac33`) |
 | M4 | Treatment — `doctorIds[]`, draft/live review, clinic min price | ✅ done, merged (`9d33948`) |
 | M4.1 | Unit tests — Jest for the rule-heavy code (39 tests) | ✅ done, merged (`2dc3b3e`) |
-| **M5** | **Slot + Booking — atomic hold, transactions, state machine, consent** | **next** |
+| **M5** | **Slot + Booking — atomic hold, transactions, state machine, consent** | **built, Postman run by the user pending** |
 | M6 | Review — only after a COMPLETED booking | |
 | M7 | Chat — socket.io rooms | |
+| AI-1 | Translator — questionnaire KO summary, chat / review / clinic-text translation (with M7) | |
 | M8 | Community + CS + Notification | |
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
+| AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
 
-## Next step: M5 — start with the `slots` and `bookings` collection review
+## Next step: the user runs the M5 Postman folder, then merge
 
-Bring these into the review:
+M5 is built on `feature/booking` (not committed yet). Review → build → explain + LEARN.md are done.
+Left: the user runs `npm run test:api -- M5` (or the folder in Postman), then commit and merge
+`feature/booking` into `develop` with the usual routine.
 
-- `bookingPrice` is a copy of `treatmentPrice` at booking time — M4's "a higher price applies at
-  once" relies on it.
-- A treatment of `treatmentDuration` holds `ceil(duration / 30)` consecutive slots of one doctor,
-  in one transaction; the slot lock is an atomic `findOneAndUpdate` in MongoDB, never Redis.
-- Only ACTIVE treatments of ACTIVE clinics, with an ACTIVE doctor from `doctorIds`, are bookable.
-- `treatmentBookings` per month for the clinic's treatment table (deferred from M4).
-- Clinic opening hours (`clinicHours`) bound the slots that can exist.
-- The 10-minute hold and its release: a BullMQ delayed job comes in M9 — decide what M5 does
-  without it (a lazy expiry check on read, or a sweep).
-- The booking state machine is rule-heavy: put the transitions in a pure `booking.rules.ts` and
-  cover them with Jest, as M4.1 did for treatments.
+- `.env` needs `MEDICAL_ENC_KEY` (32 bytes, base64) — the API refuses to boot without it.
+- 9 operations: `createSlots`, `setSlotsBlocked`, `getClinicSchedule`, `getAvailableSlots`, `holdSlots`,
+  `createBooking`, `getBookings`, `getBooking`, `updateBookingStatus`. Rules in `booking.rules.ts`.
+- After M5: **M6 — Review** (only after a COMPLETED booking; add `bookingReviewed` then).
 
 ## Session handoff — where the last session stopped
 
@@ -64,8 +61,8 @@ Bring these into the review:
 - Atlas Search: index `clinic_search` exists and is READY, with `clinicName`, `clinicNameKo`,
   `clinicDesc` and `clinicTreatmentNames` mapped; `.env` has `ATLAS_SEARCH_INDEX=clinic_search`.
   New mapped fields must be added by the user in Compass (Indexes → Search Indexes → Edit).
-- Last full runs: Newman M0–M4 green (548 assertions), Jest 39/39, `npm run typecheck` (app +
-  specs), `lint:check`, `build` clean.
+- Last full runs (2026-10-07, M5 branch): Newman M0–M5 green (684 assertions), Jest 96/96,
+  `npm run typecheck`, `lint:check`, `build` clean.
 - Merge routine the user expects after "commit qilib develop'ga merge qil": stage by name, read the
   diff, secret scan → commit → `git merge --no-ff` into `develop` → close the milestone here →
   scan the unpushed range → `git push origin develop` → `git branch -d` the merged branch.
@@ -81,6 +78,10 @@ Bring these into the review:
 - **`npm test` does not type-check** (ts-jest + `isolatedModules`); `npm run typecheck` does.
 - **Postman sandbox globals** (`data`, `tests`, …) must never be declared in scripts.
 - **Mongoose never drops an index** removed from a schema; drop it in Compass.
+- **Run Newman only after the watch server has reloaded.** A full run started during a reload
+  failed 113 assertions in a cascade; the same run a minute later was green (M5).
+- **When Bash is stuck** ("classifier gave no verdict"), the Terminal panel tool still runs
+  commands; close its tabs afterwards (the session allows six).
 
 
 ## Left for later

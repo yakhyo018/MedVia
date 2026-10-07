@@ -134,3 +134,33 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | In-memory fakes (Redis, Mongoose model) through Nest DI, not a mocking library. | Shows the DI payoff; the fake also records commands for assertions. | Fakes can drift from the real API. | `ioredis-mock`, `mongodb-memory-server` (new packages). |
 | Every new test checked against a deliberately broken feature before it was trusted. | M4 had a test that passed for the wrong reason. | Manual, not automated. | Stryker mutation testing. |
 | `apps/medvia-api/tsconfig.json` (noEmit, `types: [node, jest]`, includes specs) used by the editor and `npm run typecheck`; the build keeps `tsconfig.app.json`. | ts-jest with `isolatedModules` never type-checks tests, and the build config excludes them — spec type errors went unnoticed and the editor did not know the jest globals. | Two tsconfigs to keep in line. | `isolatedModules: false` in ts-jest (slower runs); `@jest/globals` imports in every spec. |
+
+## AI — scope (agreed before M5)
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| Two AI milestones: AI-1 Translator (with M7 chat), AI-2 Booking assistant agent (after M10). M5 is built without AI. | Language is the platform's core problem (RU/UZ/KK patients, KO clinics); the agent needs seeded data to be meaningful. Keeps M5 focused on the slot lock. | A third-party LLM in the stack: cost, latency, outages. | Build AI into M5; classic MT API only; admin ad-check or CS agent instead of the booking agent. |
+| `components/ai` with `ai.service` as the only door; AI is never on the critical path. | Same pattern as `auth.service`; if the LLM fails the original text is shown and booking still works. | — | Call the SDK from each module. |
+| Health data goes to the LLM only with the `AI_SUMMARY` consent, pseudonymised (no name, phone, email); output is labelled "not a diagnosis". | Questionnaire answers are sensitive data under PIPA. | Patients without consent get untranslated questionnaires. | Send everything; translate on the client. |
+| The agent calls the existing services as tools; `holdSlots` only after the patient confirms. | The agent is just another client — the atomic hold and every booking rule still apply. | Prompt injection through clinic or review text. | Let the agent book directly. |
+
+## M5 — Slot + Booking
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| Slots are documents the clinic creates ("Add slots"), bounded by `clinicHours`; created by upsert per start time. | The slot document is the lock; the unique `{doctorId, slotStart}` index makes creation idempotent and an upsert never touches a booked slot. | Many small documents (one per doctor per 30 min). | Virtual slots computed from hours, only taken ones stored; `insertMany` with ordered:false and duplicate errors. |
+| Two-step booking: `holdSlots` (10 min) then `createBooking`. One live form hold per patient. | The mockup's timer; the hold is taken atomically before the questionnaire is filled. One hold per patient stops hoarding. | Two round trips. | Take the slots only on "Send request" (no timer). |
+| Multi-slot hold: conditional `updateMany` + count check inside a transaction. | All n slots or none. | Transactions need a replica set (Atlas has one). | Per-slot `findOneAndUpdate` in a loop (same transaction, more round trips). |
+| Lazy expiry: an expired hold counts as free in the write filter; PENDING past `respondDeadline` is read as EXPIRED and written on the next touch. | Correct without a background job until M9. | The database shows stale HELD / PENDING until something touches them. | A cron sweep now; a BullMQ delayed job now (M9 scope). |
+| `holdExpiresAt` holds the form hold, then the clinic's deadline. | One field answers "when does this hold die". | One field, two phases. | Separate `respondDeadline` on the slot. |
+| One `updateBookingStatus` for every role; transitions in a table in `booking.rules.ts`. | 3 mutations → 1; a rule is a table row; every combination unit-tested. | A bug in the shared path affects every role. | `confirmBooking`, `declineBooking`, `cancelMyBooking`, `cancelBookingByAdmin`. |
+| One `getBookings` for every role; scope from the token, input filters only narrow. | 4 queries → 1; no IDOR by construction. | Same as above — covered by scope tests in Jest and Postman. | One query per role. |
+| `cancelledBy` uses `BookingActor` (PATIENT/CLINIC/ADMIN); `SYSTEM` dropped. | Expiry is its own status, not a cancel. | — | Keep SYSTEM for expiry. |
+| Questionnaire encrypted with AES-256-GCM in the API (`MEDICAL_ENC_KEY`, required at boot); decrypted only for the patient, clinic and doctor of the booking; never in lists or for the admin. | Health data is PIPA sensitive data; disk encryption does not stop a reader of the database. | Lost key = lost questionnaires; no search over answers. | Atlas encryption at rest only; MongoDB CSFLE / Queryable Encryption (needs `mongodb-client-encryption` and a KMS). |
+| Consent snapshot per booking, version and time stamped by the server; `consents` collection cut. | Proof of the text agreed to; no account-level consent screen yet. | Withdrawal history needs the collection later. | `consents` history collection now. |
+| Bookable only ≥ 3 h ahead; deadline = min(now + 24 h, visit − 1 h); max 3 PENDING per patient. | The clinic always has time to answer; no hoarding. | Last-minute bookings are impossible. | No lead time. |
+| A patient cancels a confirmed visit until 24 h before; a request at any time before the visit. Decline and clinic/admin cancel need a reason. | Agreed in the review. | — | No limit. |
+| `removeDoctor` refused while the doctor has a live request or a confirmed future visit. | Those patients would be left with a visit nobody performs. | The clinic must clear them first. | Cancel them automatically (SYSTEM). |
+| `treatmentBookingsMonth` counted by `$lookup` on read (CONFIRMED/COMPLETED/NO_SHOW in this Seoul month); no counter field. | A counter would move on confirm and every later status change, and drift. | One lookup per clinic table load. | `$inc` counter on the treatment. |
+| Seoul time by arithmetic (UTC+9), no timezone library. | Korea has no daylight saving time. | Wrong if ever reused for a zone with DST. | luxon / date-fns-tz. |
+| Cut: `slotEnd`, `respondedAt`, `cancelledAt`, `bookingQueue`, reschedule, AI summary, questionnaire photos; `bookingReviewed` moves to M6. | Derivable, or out of the portfolio scope. | — | Keep the ER model's full shape. |
