@@ -1,0 +1,20 @@
+$kind: http-request
+url: '{{baseUrl}}/upload/image?target=doctor'
+method: POST
+headers:
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: formdata
+  content:
+    - key: file
+      type: file
+      src: fixtures/clinic-photo.png
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json() || {};
+      const msg = Array.isArray(body.message) ? body.message.join('; ') : (body.message || '');
+      pm.test('status 403', () => pm.response.to.have.status(403));
+      pm.test('refused: target not allowed', () => pm.expect(msg).to.eql('You cannot upload images for this target!'));
+    language: text/javascript
+order: 23000

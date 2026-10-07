@@ -6,15 +6,17 @@ import { AuthModule } from '../auth/auth.module';
 import FollowSchema from '../../schemas/Follow.model';
 import MemberSchema from '../../schemas/Member.model';
 import ClinicSchema from '../../schemas/Clinic.model';
+import DoctorSchema from '../../schemas/Doctor.model';
 
 @Module({
 	imports: [
 		MongooseModule.forFeature([
 			{ name: 'Follow', schema: FollowSchema },
-			// Models, not MemberModule / ClinicModule: ClinicModule imports this one,
+			// Models, not Member/Clinic/DoctorModule: Clinic and Doctor modules import this one,
 			// so importing it back would close a cycle.
 			{ name: 'Member', schema: MemberSchema },
 			{ name: 'Clinic', schema: ClinicSchema },
+			{ name: 'Doctor', schema: DoctorSchema },
 		]),
 		AuthModule,
 	],

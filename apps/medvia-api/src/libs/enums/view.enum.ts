@@ -1,7 +1,8 @@
 import { registerEnumType } from '@nestjs/graphql';
 
-/** DOCTOR and ARTICLE join in M3 and M8. */
+/** ARTICLE joins in M8. */
 export enum ViewGroup {
 	CLINIC = 'CLINIC',
+	DOCTOR = 'DOCTOR',
 }
 registerEnumType(ViewGroup, { name: 'ViewGroup' });

@@ -38,6 +38,8 @@ const DETAIL_TTL_SECONDS = 60;
 /** "Similar clinics nearby": within 5 km of the pin. */
 const NEARBY_MAX_METERS = 5_000;
 
+const ACTIVE_IDS_TTL_SECONDS = 60;
+
 /** Identity fields the admin verified. Locked once the clinic is live. */
 const LOCKED_FIELDS = ['clinicName', 'clinicNameKo', 'clinicDistrict', 'clinicAddress'] as const;
 
@@ -342,10 +344,6 @@ export class ClinicService {
 		return await this.likeService.getFavoriteClinics(memberId, input);
 	}
 
-	public async getVisitedClinics(memberId: ObjectId, input: OrdinaryInquiry): Promise<Clinics> {
-		return await this.viewService.getVisitedClinics(memberId, input);
-	}
-
 	/** Counters move only through $inc: atomic, so two concurrent likes both count. */
 	public async clinicStatsEditor(input: StatisticModifier): Promise<T | null> {
 		const { _id, targetKey, modifier } = input;
@@ -353,6 +351,37 @@ export class ClinicService {
 			.findByIdAndUpdate(_id, { $inc: { [targetKey]: modifier } }, { new: true })
 			.lean()
 			.exec();
+	}
+
+	/**
+	 * Ids of every ACTIVE clinic — the "clinic is live" half of a doctor's visibility.
+	 * Read from `clinics` (one source of truth) and cached briefly; any clinic status change
+	 * drops the key. Cached as strings, so they are turned back into ObjectIds: a `$in` of
+	 * strings would match no ObjectId and silently return nothing.
+	 */
+	public async getActiveClinicIds(): Promise<ObjectId[]> {
+		const ids = await this.cacheService.wrap<string[]>(
+			CacheKeys.activeClinicIds,
+			ACTIVE_IDS_TTL_SECONDS,
+			async () =>
+				(await this.clinicModel.distinct('_id', { clinicStatus: ClinicStatus.ACTIVE }).exec()).map(
+					String,
+				),
+		);
+		return ids.map((id) => shapeIntoMongoObjectId(id) as ObjectId);
+	}
+
+	/** Used by doctor pages: the clinic, only if it is live. */
+	public async findActiveClinic(clinicId: unknown): Promise<Clinic | null> {
+		return (await this.clinicModel
+			.findOne({ _id: clinicId, clinicStatus: ClinicStatus.ACTIVE })
+			.lean()
+			.exec()) as Clinic | null;
+	}
+
+	/** Used when a clinic account adds a doctor. */
+	public async findClinicByMember(memberId: ObjectId): Promise<Clinic | null> {
+		return (await this.clinicModel.findOne({ memberId }).lean().exec()) as Clinic | null;
 	}
 
 	/* ───────────────────────── admin ───────────────────────── */
@@ -550,8 +579,17 @@ export class ClinicService {
 		return shapeIntoMongoObjectId(id) as ObjectId;
 	}
 
+	/**
+	 * Every clinic change also reaches the doctor pages: a doctor is public only while the
+	 * clinic is ACTIVE, and a doctor page shows the clinic's name and district. Doctor
+	 * detail keys do not carry the clinic id, so the whole `doctor:detail:*` prefix goes —
+	 * acceptable because clinic edits and admin decisions are rare next to page reads.
+	 */
 	private async invalidateClinic(clinicId: unknown): Promise<void> {
 		await this.cacheService.del(CacheKeys.clinicDetail(clinicId));
+		await this.cacheService.del(CacheKeys.activeClinicIds);
 		await this.cacheService.invalidate(CacheKeys.clinicListPattern);
+		await this.cacheService.invalidate(CacheKeys.doctorListPattern);
+		await this.cacheService.invalidate(CacheKeys.doctorDetailPattern);
 	}
 }

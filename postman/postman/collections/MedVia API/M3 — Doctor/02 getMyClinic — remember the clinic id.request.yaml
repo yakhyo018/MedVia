@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query GetMyClinic { getMyClinic { _id clinicStatus } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const c = gql.getMyClinic || {};
+      pm.test('still PENDING', () => pm.expect(c.clinicStatus).to.eql('PENDING'));
+      pm.environment.set('clinicId', c._id || '');
+    language: text/javascript
+order: 2000

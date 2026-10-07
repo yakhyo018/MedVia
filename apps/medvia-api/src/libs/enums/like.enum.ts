@@ -1,7 +1,8 @@
 import { registerEnumType } from '@nestjs/graphql';
 
-/** DOCTOR, ARTICLE and COMMENT join in M3 and M8. */
+/** ARTICLE and COMMENT join in M8. */
 export enum LikeGroup {
 	CLINIC = 'CLINIC',
+	DOCTOR = 'DOCTOR',
 }
 registerEnumType(LikeGroup, { name: 'LikeGroup' });

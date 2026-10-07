@@ -28,6 +28,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const UPLOAD_TARGETS: Record<string, MemberType[]> = {
 	member: [MemberType.USER, MemberType.AGENT, MemberType.DOCTOR, MemberType.ADMIN],
 	clinic: [MemberType.AGENT],
+	doctor: [MemberType.DOCTOR],
 };
 
 /** What multer hands over with memoryStorage. */

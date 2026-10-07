@@ -119,16 +119,6 @@ export class ClinicResolver {
 		return await this.clinicService.getFavoriteClinics(memberId, input);
 	}
 
-	@UseGuards(AuthGuard)
-	@Query(() => Clinics)
-	public async getVisitedClinics(
-		@Args('input') input: OrdinaryInquiry,
-		@AuthMember('_id') memberId: ObjectId,
-	): Promise<Clinics> {
-		console.log('Query: getVisitedClinics');
-		return await this.clinicService.getVisitedClinics(memberId, input);
-	}
-
 	/** ADMIN **/
 
 	@Roles(MemberType.ADMIN)

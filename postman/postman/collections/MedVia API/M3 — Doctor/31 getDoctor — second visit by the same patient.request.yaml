@@ -1,0 +1,30 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query GetDoctor($doctorId: String!) {
+        getDoctor(doctorId: $doctorId) {
+          _id doctorName doctorSpecialty doctorStatus doctorLikes doctorFollowers memberId meLiked meFollowed
+          clinicData { _id clinicName clinicStatus }
+          memberData { memberEmail }
+        }
+      }
+    variables: |-
+      { "doctorId": "{{doctorId}}" }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+    language: text/javascript
+order: 31000

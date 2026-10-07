@@ -2,8 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, ObjectId } from 'mongoose';
 import { Clinics } from '../../libs/dto/clinic/clinic';
+import { Doctors } from '../../libs/dto/doctor/doctor';
 import { OrdinaryInquiry } from '../../libs/dto/common/inquiry';
 import { ClinicStatus } from '../../libs/enums/clinic.enum';
+import { DoctorStatus } from '../../libs/enums/doctor.enum';
 import { LikeGroup } from '../../libs/enums/like.enum';
 import { T } from '../../libs/types/common';
 
@@ -78,5 +80,51 @@ export class LikeService {
 			.exec();
 
 		return result[0] as Clinics;
+	}
+
+	/** My Favorites → Doctors tab. A doctor drops out when the doctor or the clinic is not ACTIVE. */
+	public async getFavoriteDoctors(memberId: ObjectId, input: OrdinaryInquiry): Promise<Doctors> {
+		const { page, limit } = input;
+
+		const result = await this.likeModel
+			.aggregate([
+				{ $match: { memberId, likeGroup: LikeGroup.DOCTOR } },
+				{ $sort: { createdAt: -1 } },
+				{
+					$lookup: {
+						from: 'doctors',
+						localField: 'likeRefId',
+						foreignField: '_id',
+						pipeline: [
+							{ $match: { doctorStatus: DoctorStatus.ACTIVE } },
+							{
+								$lookup: {
+									from: 'clinics',
+									localField: 'clinicId',
+									foreignField: '_id',
+									pipeline: [{ $match: { clinicStatus: ClinicStatus.ACTIVE } }],
+									as: 'clinicData',
+								},
+							},
+							{ $unwind: '$clinicData' },
+						],
+						as: 'doctor',
+					},
+				},
+				{ $unwind: '$doctor' },
+				{
+					$facet: {
+						list: [
+							{ $skip: (page - 1) * limit },
+							{ $limit: limit },
+							{ $replaceRoot: { newRoot: '$doctor' } },
+						],
+						metaCounter: [{ $count: 'total' }],
+					},
+				},
+			])
+			.exec();
+
+		return result[0] as Doctors;
 	}
 }

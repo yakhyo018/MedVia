@@ -28,6 +28,13 @@ body:
         }
       }
 scripts:
+  - type: beforeRequest
+    code: |-
+      // With ATLAS_SEARCH_INDEX set, the clinic approved a moment ago reaches the search index
+      // a few seconds after the write (Atlas Search is eventually consistent). Without the
+      // index the regex reads the collection itself and this wait changes nothing.
+      setTimeout(() => {}, 6000);
+    language: text/javascript
   - type: afterResponse
     code: |-
       const body = pm.response.json();
