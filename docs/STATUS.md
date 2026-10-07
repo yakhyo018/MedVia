@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-07, M4 built on `feature/treatment`, waiting for the user's Postman run._
+_Last updated: 2026-10-07, after M4 merged into `develop`._
 
 ## The project
 
@@ -11,7 +11,7 @@ MedVia — portfolio project for Korean healthtech job applications. Foreign pat
 find verified Seoul clinics and book treatments in their own language. Not a business: no SMS, no
 outgoing email, no payments, no HIRA. The sample patient persona is **Feride Karimova**.
 
-- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M3
+- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M4
 - Design and data model: `~/Desktop/MedVia-design` — ER source `er/model.js`, mockup generators `source/`
 - ER model (24 collections): https://claude.ai/artifact/LiWJjgdBPcaLSjdGkefKcA
 - Clickable prototype (61 screens): https://claude.ai/artifact/Js6b1j85jbvBrxCSpNRiWt
@@ -26,26 +26,27 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M1 | Member + Auth — `members`, `sessions`, refresh rotation, admin | ✅ done, merged (`2892148`) |
 | M2 | Clinic — AGENT CRUD, admin verification, list/detail, follow/like/view | ✅ done, merged (`eb6a1fa`) |
 | M3 | Doctor — accounts created by the clinic (+ M3.1: shared `likeTarget`, flags on cards) | ✅ done, merged (`a96ac33`) |
-| **M4** | **Treatment — `doctorIds[]`, draft/live review, clinic min price** | **built on `feature/treatment`; Newman 547/548 (the treatment-name search waits for the Atlas mapping); user's Postman run pending** |
-| M5 | Slot + Booking — atomic hold, transactions, state machine, consent | |
+| M4 | Treatment — `doctorIds[]`, draft/live review, clinic min price | ✅ done, merged (`9d33948`) |
+| **M5** | **Slot + Booking — atomic hold, transactions, state machine, consent** | **next** |
 | M6 | Review — only after a COMPLETED booking | |
 | M7 | Chat — socket.io rooms | |
 | M8 | Community + CS + Notification | |
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
 
-## Next step
+## Next step: M5 — start with the `slots` and `bookings` collection review
 
-1. **Update the Atlas Search mapping**: Compass → `clinics` → Indexes → Search Indexes →
-   `clinic_search` → edit → add `"clinicTreatmentNames": { "type": "string", "analyzer":
-   "lucene.standard" }` (see `docs/atlas-search/clinics.json`). Wait for READY.
-2. **The user runs `M4 — Treatment`** (`npm run test:api -- M4`). After it passes,
-   `feature/treatment` merges into `develop` with `--no-ff` and `develop` is pushed.
-3. **M5 — Slot + Booking**, starting with the `slots` and `bookings` review. Bring in:
-   - `bookingPrice` is a copy of `treatmentPrice` at booking time (M4 relies on it).
-   - A treatment of `treatmentDuration` holds `ceil(duration / 30)` consecutive slots of one doctor.
-   - Only ACTIVE treatments of ACTIVE clinics, with an ACTIVE doctor from `doctorIds`, are bookable.
-   - `treatmentBookings` per month for the clinic's treatment table.
+Bring these into the review:
+
+- `bookingPrice` is a copy of `treatmentPrice` at booking time — M4's "a higher price applies at
+  once" relies on it.
+- A treatment of `treatmentDuration` holds `ceil(duration / 30)` consecutive slots of one doctor,
+  in one transaction; the slot lock is an atomic `findOneAndUpdate` in MongoDB, never Redis.
+- Only ACTIVE treatments of ACTIVE clinics, with an ACTIVE doctor from `doctorIds`, are bookable.
+- `treatmentBookings` per month for the clinic's treatment table (deferred from M4).
+- Clinic opening hours (`clinicHours`) bound the slots that can exist.
+- The 10-minute hold and its release: a BullMQ delayed job comes in M9 — decide what M5 does
+  without it (a lazy expiry check on read, or a sweep).
 
 ## What M3 left for later
 
