@@ -853,8 +853,8 @@ un-hides the row. The `updateMany` runs with `timestamps: false` — hiding is n
 
 With `ATLAS_SEARCH_INDEX` switched on, an M2 test that searched for a clinic approved a second
 earlier failed: the clinic was not in the search index yet. Thirty seconds later it ranked first.
-Atlas Search reads a separate Lucene index that follows the collection a moment behind. The test
-now waits a few seconds; a real UI simply shows a just-approved clinic in search a moment later.
+Atlas Search reads a separate Lucene index that follows the collection a moment behind. (The fixed
+wait added here was not enough — see M3.1, section "When the cache freezes the gap".)
 
 One more finding: Korean search uses the `lucene.nori` analyzer, which splits words with a
 dictionary. `포스트맨글로우피부과의원` is found by `포스트맨`, `글로우`, `의원` and
@@ -871,3 +871,99 @@ need an `autocomplete` (edgeGram) mapping.
 5. Why answer "not found" instead of "forbidden" when a clinic touches another clinic's doctor?
 6. "Clear history" — why not delete the rows?
 7. Your search test fails right after a write and passes 30 seconds later. Explain.
+
+---
+
+## M3.1 — Refactor: one like, flags on every card
+
+### The problem
+
+1. **The same mutation, twice — and two more coming.** `likeTargetClinic` and `likeTargetDoctor`
+   were the same twenty lines with a different model and counter. M8 adds articles and
+   comments, which would have made four copies.
+2. **Hearts only on the detail page.** A list card could not show whether the patient liked or
+   followed it. Nestar did show it, with a reusable pipeline stage:
+   `lookupAuthMemberLiked(memberId, '$_id')` — a `$lookup` into `likes` for every card, the second
+   argument naming which field is the reference (`'$_id'`, `'$followingId'`, `'$followerId'`).
+   It returned `meLiked: [{ memberId, likeRefId, myFavorite: true }]`, an empty array meaning "no".
+
+### Why Nestar's stage could not be copied
+
+- **Cache leak.** MedVia caches the list (`clinic:list:<hash>`) once for everyone. A per-viewer
+  `$lookup` inside the cached pipeline would show the first patient's hearts to every visitor
+  after them. Nestar had no cache, so it never met this problem.
+- **An array where a boolean belongs.** The client had to read `meLiked?.[0]?.myFavorite`.
+- **Guests paid for it.** With `memberId = null` the `$lookup` still ran for every card.
+
+### What was kept: the reference parameter. What changed: where it runs.
+
+```ts
+const page = await cache.wrap(key, ttl, load);                         // same for everyone
+const liked    = await likeService.likedIds(viewer._id, page.list.map((c) => c._id));
+const followed = await followService.followedIds(viewer._id, page.list.map((c) => c.memberId));
+page.list.map((c) => ({ ...c, meLiked: liked.has(String(c._id)), meFollowed: followed.has(String(c.memberId)) }));
+```
+
+The caller still chooses the reference field (`_id` for likes, `memberId` for follows) — Nestar's
+flexibility — but the flags are applied **after** the cache, with **one `$in` query per page**
+(10 cards, one query, served by the unique `{ memberId, likeRefId }` index), and guests cost
+nothing. The detail page's `isLiked` / `isFollowing` became one-element calls of the same helpers,
+so the logic lives in one place. The Postman suite proves the cache does not leak: the same
+`getClinics` input asked by a patient and then by a guest returns the heart only to the patient.
+
+### One `likeTarget` — the strategy pattern
+
+```graphql
+likeTarget(input: { likeGroup: DOCTOR, likeRefId: "…" }) { likeGroup likeRefId meLiked likes }
+```
+
+`LikeService` knows how to toggle a like. It does **not** know what a clinic or a doctor is. Each
+likeable module registers a handler on boot:
+
+```ts
+// ClinicService.onModuleInit
+likeService.registerTarget(LikeGroup.CLINIC, {
+	isLikeable: (id) => clinic exists and is ACTIVE,
+	moveLikes:  (id, ±1) => $inc clinicLikes, drop the cached page, return the new count,
+	countLikes: (id) => current clinicLikes,
+});
+```
+
+- **Open/closed.** M8 adds `ARTICLE` by registering a handler; `likeTarget` is not edited.
+- **Dependency inversion.** Clinic and doctor import the like module; the like module never
+  imports them. The handler is how the lower module calls back up without an import cycle.
+- **The group decides where the id is looked up.** A member id sent as `CLINIC` is "not found",
+  not a like on the wrong thing.
+
+### When the cache freezes the gap
+
+The M2 search test failed again on the user's run. A fixed 6-second wait was not enough: the
+index lag varied between ~4 and ~8 seconds. The test was changed to retry (`setNextRequest`, up
+to 15 × 2 s) — and still failed after 30 seconds. Atlas had long caught up; **our cache had not**.
+The first attempt stored "not found yet" under `clinic:list:<hash>` for 60 seconds, and every retry
+read that entry.
+
+This is a product bug, not a test bug: a patient searching for a clinic right after it goes live
+would get "not found" for a whole minute. Two eventually consistent layers in a row multiply
+their staleness. The fix is to cache only what is worth caching:
+
+| Request | Cached? | Why |
+| --- | --- | --- |
+| browse with filters (district, specialty, language) | yes, 60 s | few combinations, repeated by many visitors |
+| text search | **no** | almost every query differs (low hit rate), and it reads an index that lags |
+
+After the fix the test passed three runs in a row after 2, 3 and 4 retries — the real lag.
+
+What stayed separate on purpose: `getClinics`, `getMyClinicDoctors`, `getAllDoctorsByAdmin`. One
+query that changes its answer by role would mix permissions with filtering and would need the
+role in every cache key — the leak above, in another shape.
+
+### Interview questions
+
+1. Nestar put `meLiked` into the list pipeline. Why does that break once the list is cached?
+2. How do you show "liked" on 10 cards with one query? Which index serves it?
+3. What is the strategy pattern here, and how does it keep `LikeService` closed for modification?
+4. The like module calls code in the clinic module without importing it. How?
+5. Why not one `getDoctors` that returns different data for guests, clinics and admins?
+6. A search right after a write returns nothing for a full minute, although the search index
+   caught up in five seconds. What happened, and which requests should not be cached?

@@ -96,4 +96,15 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | Clinic changes drop `clinic:active:ids`, `doctor:list:*`, `doctor:detail:*` by prefix. | Doctor pages must disappear with a suspended clinic, without ClinicModule importing DoctorModule (cycle). | Every clinic edit clears every doctor page cache. | Clinic-scoped doctor keys; an event bus. |
 | `getVisitedClinics` replaced by `getRecentlyVisited` (mixed timeline) + `clearRecentlyVisited` (hide, not delete); views index `{ memberId, updatedAt: -1 }`. | The mockup is one timeline; deleting would recount views on the next visit. | The old index `{ memberId, viewGroup, updatedAt }` stays in Atlas until dropped (Mongoose never drops indexes). | Per-group tabs; delete rows. |
 | Doctor name search: escaped regex, no Atlas Search index. | Doctors are few; a second search index is not needed yet. | No fuzzy/Korean analysis for doctor names. | `doctor_search` index. |
-| M2 search test waits 6 s before searching. | Atlas Search is eventually consistent; the clinic approved a second earlier is not indexed yet. | Slower suite. | Retry loop in the test. |
+| M2 search test waits for the index (replaced by a retry loop in M3.1). | Atlas Search is eventually consistent; the clinic approved a second earlier is not indexed yet. | Slower suite. | Retry loop in the test. |
+
+## M3.1 — Shared like and viewer flags
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| One `likeTarget(likeGroup, likeRefId)` replaces `likeTargetClinic` / `likeTargetDoctor`; modules register a `LikeTargetHandler` on boot. | Two copies already, four in M8. New likeable types register a handler; `likeTarget` stays closed. Like module never imports its targets. | An unregistered group fails at request time, not at compile time. | One mutation per type (Nestar); a switch on likeGroup inside LikeService (imports every module). |
+| `meLiked` / `meFollowed` on list cards (`getClinics`, `getNearbyClinics`, `getDoctors`), applied after the cache with one `$in` query per page. | Cards need the heart; the cached page is shared by everyone. | One or two extra queries per list request for signed-in viewers. | Nestar's per-card `$lookup` inside the pipeline (leaks through the cache); per-viewer cache keys (cache hit rate collapses). |
+| Flags are booleans, not Nestar's `[{ memberId, likeRefId, myFavorite }]`. | The client reads one field. | — | Keep the array shape. |
+| Text searches in `getClinics` are not cached; filter-only browsing is. | Low hit rate for free text, and caching a lagging index froze "not found" for the whole TTL after a clinic went live. | Every text search reaches Atlas. | Cache text searches with a short TTL; invalidate on index sync (no such signal). |
+| M2 search test retries (`setNextRequest`, 15 × 2 s) instead of a fixed wait. | Index lag measured 4–8 s and varies. | A slow index makes the suite slower, not red. | Longer fixed wait; skip the test with Atlas Search on. |
+| Role-specific list queries stay separate. | Mixing roles into one query mixes authorisation with filtering and needs the role in the cache key. | More resolvers. | One role-aware query. |

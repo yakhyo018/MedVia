@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-07, M3 built on `feature/doctor`, waiting for the user's Postman run._
+_Last updated: 2026-10-07, M3 + M3.1 built on `feature/doctor`, waiting for the user's Postman run._
 
 ## The project
 
@@ -25,7 +25,7 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M0 | Skeleton — monorepo, Atlas, Redis, GraphQL, guards | ✅ done |
 | M1 | Member + Auth — `members`, `sessions`, refresh rotation, admin | ✅ done, merged (`2892148`) |
 | M2 | Clinic — AGENT CRUD, admin verification, list/detail, follow/like/view | ✅ done, merged (`eb6a1fa`) |
-| **M3** | **Doctor — accounts created by the clinic** | **built on `feature/doctor`; Newman 400/400 green; user's Postman run pending** |
+| **M3** | **Doctor — accounts created by the clinic** (+ M3.1: shared `likeTarget`, flags on cards) | **built on `feature/doctor`; Newman 417/417 green; user's Postman run pending** |
 | M4 | Treatment — `doctorIds[]` | |
 | M5 | Slot + Booking — atomic hold, transactions, state machine, consent | |
 | M6 | Review — only after a COMPLETED booking | |
@@ -36,7 +36,7 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 
 ## Next step
 
-1. **The user runs `M3 — Doctor` in Postman** (or `npm run test:api -- M3`). After it passes,
+1. **The user runs `M2 — Clinic` and `M3 — Doctor` in Postman** (M3.1 changed tests in both). After they pass,
    `feature/doctor` merges into `develop` with `--no-ff`.
 2. **M4 — Treatment**, starting with the `treatments` collection review. Bring in:
    - `doctorIds[]` must hold doctors of the same clinic, at least one, all not DELETE.
