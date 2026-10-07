@@ -757,3 +757,117 @@ write (eventual consistency), so a clinic approved a second ago may not be searc
 8. Why does a `$sort` placed inside `$facet` hurt, while the same `$sort` before it is free?
 9. Name three ways a file upload endpoint can be attacked, and the defence for each.
 10. When is copying a field into another collection (denormalising) safe?
+
+---
+
+## M3 — Doctor
+
+### 1. Visibility that depends on another collection
+
+A doctor is public only while **two** statuses say so: `doctors.doctorStatus = ACTIVE` and the
+clinic's `clinics.clinicStatus = ACTIVE`. On a single doctor page this is easy — read the doctor,
+then the clinic. The hard case is the **list**: filter on both, sort, and cut page 2 of 10.
+
+Three ways, measured on 1 000 clinics (10 % suspended) and 20 000 doctors, page of 10 plus the
+total count, median of 7 runs against Atlas:
+
+| Option | How | Time | Page of 10 (`explain`) |
+| --- | --- | --- | --- |
+| 1. `$lookup` | join every doctor to its clinic, then filter, then page | **1003 ms** | — |
+| 2. flag | copy `clinicActive` onto each doctor, `updateMany` on every clinic change | **286 ms** | IXSCAN, 10 docs |
+| 3. `$in` | cached list of active clinic ids, `clinicId: { $in: ids }` | **317 ms** | IXSCAN, 12 docs |
+
+Option 1 is slow because the filter that decides visibility sits **after** the `$lookup`: every
+doctor is joined before the database knows which ten to keep.
+
+Option 2 is fastest, but the same fact now lives in two places. Every clinic status change
+(approve, suspend, restore, delete) must fan out to all its doctors, and a crash between the clinic
+write and the `updateMany` leaves doctors visible for a suspended clinic — so it needs a
+transaction, and every future status path must remember it.
+
+**Chosen: option 3.** One source of truth, the query stays on one collection and pages through
+`{ doctorStatus, createdAt }`; the index hands over rows in order and the `$in` drops the two that
+belong to suspended clinics (12 docs examined for 10 returned). The price is one cached key,
+`clinic:active:ids`, dropped on any clinic change. It stops scaling when the `$in` list holds tens
+of thousands of ids — that is the point to move to option 2.
+
+Compare M2's `followingType`: copying a member's type was safe because it **never changes**. A
+clinic's status changes; copying it is a synchronisation problem.
+
+A trap found while writing it: the ids come back from the Redis cache as **strings**. A `$in` of
+strings matches no `ObjectId` and returns nothing, silently. They are converted back before use.
+
+### 2. Accounts created by someone else
+
+A clinic creates its doctors — doctors never sign up. `createDoctor` reuses M2's
+`createEmailMember(…, session)`: the DOCTOR account and the doctor page are inserted in one
+transaction, so neither exists without the other.
+
+The clinic chooses the password, so the account is flagged `memberMustChangePassword`. The server
+does not block a doctor who ignores it (the mockup says the account "works right away"); the risk —
+the clinic can sign in as the doctor until the password is changed — is written down in DECISIONS.
+
+There is no email, so a doctor who forgets the password asks the clinic: `resetDoctorPassword`
+sets a new temporary password and calls `endAllSessions` — every device, and every access token
+through the M1 revocation key. Removing a doctor closes the account in the same transaction as
+the `DELETE` status, then signs the doctor out after the commit.
+
+### 3. Two actors, one status field
+
+Clinic and admin can both hide a doctor. With one `HIDDEN` value, a clinic could undo an admin's
+decision. So the state machine has two separate edges:
+
+```
+ACTIVE ◄──► HIDDEN      clinic   (hideDoctor / showDoctor)
+ACTIVE ◄──► SUSPENDED   admin    (suspendDoctor / restoreDoctor, audit-logged)
+```
+
+`showDoctor` only moves `HIDDEN → ACTIVE`. Against a SUSPENDED doctor the filter matches nothing
+and the clinic gets "not allowed in the current status".
+
+**Ownership answers "not found", not "forbidden".** Another clinic asking to hide your doctor is
+told the doctor does not exist. "Forbidden" would confirm the id is real — a small leak, but a
+free one to avoid.
+
+### 4. Clinic changes reach doctor pages through the cache, not through an import
+
+`DoctorModule` imports `ClinicModule` (active ids, the clinic card). The reverse import would close
+a cycle. But a suspended clinic must take its doctors' cached pages down at once. So
+`ClinicService.invalidateClinic()` drops `clinic:active:ids`, `doctor:list:*` and `doctor:detail:*`
+by key prefix — a dependency on key names, not on a module. Doctor detail keys do not carry the
+clinic id, so the whole prefix goes; clinic changes are rare next to page reads, so that is cheap.
+The Postman suite checks it: a cached doctor page disappears in the request right after
+`suspendClinic`.
+
+### 5. Recently Visited as one timeline, and "Clear history" that does not delete
+
+The mockup shows clinics and doctors mixed, newest first. `getRecentlyVisited` returns
+`{ viewGroup, visitedAt, clinic | doctor }` from one `views` query; the index became
+`{ memberId, updatedAt: -1 }`.
+
+"Clear history" sets `viewHidden: true` instead of deleting. A deleted row turns the next visit
+into a *first* visit and the view counter grows each time a patient clears the history. A revisit
+un-hides the row. The `updateMany` runs with `timestamps: false` — hiding is not a visit.
+
+### 6. Atlas Search is eventually consistent
+
+With `ATLAS_SEARCH_INDEX` switched on, an M2 test that searched for a clinic approved a second
+earlier failed: the clinic was not in the search index yet. Thirty seconds later it ranked first.
+Atlas Search reads a separate Lucene index that follows the collection a moment behind. The test
+now waits a few seconds; a real UI simply shows a just-approved clinic in search a moment later.
+
+One more finding: Korean search uses the `lucene.nori` analyzer, which splits words with a
+dictionary. `포스트맨글로우피부과의원` is found by `포스트맨`, `글로우`, `의원` and
+`피부과의원`, but not by `피부과` — nori keeps `피부과의원` as one word. Word-prefix matching would
+need an `autocomplete` (edgeGram) mapping.
+
+### Interview questions
+
+1. A list must filter on a status stored in another collection and still paginate. Compare
+   `$lookup`, a copied flag and an `$in` of ids. Which did you choose, and when would you switch?
+2. When is denormalising safe, and why was it safe for `followingType` but not for clinic status?
+3. Your `$in` returned nothing, with no error. What happened?
+4. A clinic and an admin can both hide a doctor. How do you stop the clinic from undoing the admin?
+5. Why answer "not found" instead of "forbidden" when a clinic touches another clinic's doctor?
+6. "Clear history" — why not delete the rows?
+7. Your search test fails right after a write and passes 30 seconds later. Explain.

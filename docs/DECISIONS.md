@@ -80,3 +80,20 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | Upload target is a fixed map; type from magic bytes; server-generated name; DTOs accept only `uploads/<folder>/<uuid>.(jpg\|png)`. | Path traversal, spoofed types and outside URLs (tracking pixels, `javascript:`). | — | Trust the client's name and MIME (Nestar). |
 | Atlas Search when `ATLAS_SEARCH_INDEX` is set, escaped regex otherwise. | Relevance, typos and Korean analysis without a second system; the fallback keeps local runs and the test suite independent of the index. | Search index lags writes by a moment. | Elasticsearch; regex only; `$text` index. |
 | `formatError` maps 404 to `NOT_FOUND`. | `@nestjs/apollo` maps only 400/401/403/422; a missing clinic reported as a server error. | — | Throw BadRequest for missing data (Nestar). |
+
+## M3 — Doctor
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| `doctors` adds `doctorFollowers` and `deletedAt` to the ER model; rating/reviews (M6), answers (M8), rank (M9) deferred; treatment count not stored. | The page shows followers; soft delete is a project rule; the rest arrives with what writes it. | — | All ER counters now. |
+| Public visibility = doctor ACTIVE **and** clinic ACTIVE, the clinic half via a cached `$in` of active clinic ids. | One source of truth, index-backed paging. Measured: `$lookup` 1003 ms, flag 286 ms, `$in` 317 ms (20 000 doctors). | `$in` grows with the number of clinics; move to a flag at tens of thousands. | `$lookup` per query; `clinicActive` flag with fan-out. |
+| `DoctorStatus`: `HIDDEN` (clinic) and `SUSPENDED` (admin) are separate states. | A clinic must not be able to undo an admin decision. | — | One HIDDEN for both. |
+| `createDoctor`: DOCTOR account + doctor page in one transaction; allowed before the clinic is approved (not when REJECTED/DELETE). | No orphan account or page; the admin sees the doctors while reviewing. | Doctors of a pending clinic exist but are not public. | Only after approval. |
+| `memberMustChangePassword` is a flag for the frontend, not enforced by the server. | The mockup: the account "works right away". | The clinic knows the password until the doctor changes it. | Block every request until the password is changed. |
+| `resetDoctorPassword` by the clinic, ending all the doctor's sessions. | No email in the project; otherwise a forgotten password locks the doctor out for good. | The clinic again knows a temporary password. | Admin-only reset. |
+| `removeDoctor`: doctor DELETE + account DELETE in one transaction, sign-out after commit; follows/likes/views kept. | Soft delete; lists already drop non-ACTIVE doctors. | Counters on the removed doctor stay as they were. | Hard delete with cleanup of activity rows. |
+| Another clinic's doctor is answered with NOT_FOUND. | Does not confirm that the id exists. | Harder to debug for a confused client. | FORBIDDEN. |
+| Clinic changes drop `clinic:active:ids`, `doctor:list:*`, `doctor:detail:*` by prefix. | Doctor pages must disappear with a suspended clinic, without ClinicModule importing DoctorModule (cycle). | Every clinic edit clears every doctor page cache. | Clinic-scoped doctor keys; an event bus. |
+| `getVisitedClinics` replaced by `getRecentlyVisited` (mixed timeline) + `clearRecentlyVisited` (hide, not delete); views index `{ memberId, updatedAt: -1 }`. | The mockup is one timeline; deleting would recount views on the next visit. | The old index `{ memberId, viewGroup, updatedAt }` stays in Atlas until dropped (Mongoose never drops indexes). | Per-group tabs; delete rows. |
+| Doctor name search: escaped regex, no Atlas Search index. | Doctors are few; a second search index is not needed yet. | No fuzzy/Korean analysis for doctor names. | `doctor_search` index. |
+| M2 search test waits 6 s before searching. | Atlas Search is eventually consistent; the clinic approved a second earlier is not indexed yet. | Slower suite. | Retry loop in the test. |
