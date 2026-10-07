@@ -118,6 +118,7 @@ npx tsc -p apps/medvia-api/tsconfig.app.json --noEmit
 npx tsc -p apps/medvia-batch/tsconfig.app.json --noEmit
 npm run build
 npm run lint:check
+npm test                # Jest unit tests — no API or database needed
 npm run test:api        # needs the API running: npm run start:dev
 ```
 
