@@ -432,6 +432,18 @@ export class ClinicService implements OnModuleInit {
 		await this.invalidateClinic(clinicId);
 	}
 
+	/**
+	 * Written by the review module after every review change: the average and count of the
+	 * ACTIVE reviews, recomputed by the caller. A $set of the full value, like the treatment
+	 * summary above — writing it twice changes nothing.
+	 */
+	public async setReviewSummary(clinicId: unknown, rating: number, reviews: number): Promise<void> {
+		await this.clinicModel
+			.updateOne({ _id: clinicId }, { $set: { clinicRating: rating, clinicReviews: reviews } })
+			.exec();
+		await this.invalidateClinic(clinicId);
+	}
+
 	/** Used when a clinic account adds a doctor. */
 	public async findClinicByMember(memberId: ObjectId): Promise<Clinic | null> {
 		return (await this.clinicModel.findOne({ memberId }).lean().exec()) as Clinic | null;

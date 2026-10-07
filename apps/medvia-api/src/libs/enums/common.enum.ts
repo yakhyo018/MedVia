@@ -57,6 +57,13 @@ export enum Messages {
 	VISIT_STARTED = 'The visit time has already started!',
 	RESPOND_DEADLINE_PASSED = 'The time to answer this request has passed!',
 	DOCTOR_HAS_BOOKINGS = 'This doctor still has upcoming bookings, cancel or finish them first!',
+
+	REVIEW_NOT_COMPLETED = 'Only a completed visit can be reviewed!',
+	REVIEW_WINDOW_CLOSED = 'A review can be written within 30 days of the visit!',
+	ALREADY_REVIEWED = 'This visit already has a review!',
+	REVIEW_MESSAGE_REQUIRED = 'Please write a message to the patient!',
+	REVIEW_CHANGED = 'The patient changed this review while you were reading it, please reload!',
+	MODERATION_NOT_ALLOWED = 'This decision is not possible for the review in its current status!',
 }
 
 export enum Direction {

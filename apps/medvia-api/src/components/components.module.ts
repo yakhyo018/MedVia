@@ -9,6 +9,8 @@ import { DoctorModule } from './doctor/doctor.module';
 import { TreatmentModule } from './treatment/treatment.module';
 import { ViewModule } from './view/view.module';
 import { BookingModule } from './booking/booking.module';
+import { ReviewModule } from './review/review.module';
+import { TestSupportModule, testSupportEnabled } from './test-support/test-support.module';
 
 @Module({
 	imports: [
@@ -18,10 +20,13 @@ import { BookingModule } from './booking/booking.module';
 		DoctorModule,
 		TreatmentModule,
 		BookingModule,
+		ReviewModule,
 		FollowModule,
 		ViewModule,
 		AuditLogModule,
 		UploadModule,
+		// Postman "time travel" — never registered in production (see TestSupportModule).
+		...(testSupportEnabled() ? [TestSupportModule] : []),
 	],
 })
 export class ComponentsModule {}

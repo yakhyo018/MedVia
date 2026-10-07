@@ -1,4 +1,4 @@
-import { Field, Int, ObjectType } from '@nestjs/graphql';
+import { Field, Float, Int, ObjectType } from '@nestjs/graphql';
 import type { ObjectId } from 'mongoose';
 import { DoctorStatus } from '../../enums/doctor.enum';
 import { Specialty } from '../../enums/clinic.enum';
@@ -61,6 +61,13 @@ export class Doctor {
 
 	@Field(() => Int)
 	doctorFollowers!: number;
+
+	/** Average of the ACTIVE reviews. Absent on doctors nobody has reviewed since M6. */
+	@Field(() => Float, { nullable: true })
+	doctorRating?: number;
+
+	@Field(() => Int, { nullable: true })
+	doctorReviews?: number;
 
 	@Field(() => String)
 	clinicId!: ObjectId;

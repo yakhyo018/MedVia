@@ -1516,3 +1516,127 @@ Disk encryption protects a stolen disk; anyone who can read the database still s
 **7. Why does the booking store the price and the consent version instead of referencing them?**
 
 They are facts about the agreement, not current values. The clinic may raise the price or change the consent text tomorrow; the booking must still show what this patient accepted.
+
+---
+
+## M6 — Review
+
+### 1. "Verified" is a rule, not a badge
+
+A review is worth something only if the writer really had the visit. So the review hangs off the
+booking, not off the clinic: `createReview(bookingId)` loads the booking **scoped to the caller**
+(another patient's booking is "not found"), and `checkCanReview` demands COMPLETED, a
+`completedAt` within 30 days, and no earlier review. COMPLETED itself can only be set by the
+clinic after the visit started (M5's table) — the chain of rules is what makes "Verified visit"
+true.
+
+One review per visit is guarded twice:
+
+- `bookings.bookingReviewed` is set by a **conditional** update inside the review's transaction
+  (`bookingReviewed: { $ne: true }` in the filter) — two "Publish" clicks, the second finds it set;
+- the unique index on `reviews.bookingId` refuses a second document even if the first guard had a
+  bug.
+
+Delete is **soft and final**: the flag never goes back to false and the document stays, so a
+patient cannot delete a bad review and write a better one for the same visit (rating gaming).
+
+### 2. Moderation as a table, with the M4 version check
+
+Korean medical-ad rules treat a published review as advertising, so a review waits (PENDING) for
+an admin. `MODERATION` in `review.rules.ts` is the whole policy:
+
+```
+PENDING        APPROVE → ACTIVE   REQUEST_CHANGES → EDIT_REQUESTED   REJECT → HIDDEN
+ACTIVE                            REQUEST_CHANGES → EDIT_REQUESTED   REJECT → HIDDEN   (a complaint)
+EDIT_REQUESTED                                                       REJECT → HIDDEN
+HIDDEN         APPROVE → ACTIVE
+```
+
+Every non-approval needs a message to the patient, and may carry structured flags
+(`GUARANTEED_RESULT`, `PERSONAL_DATA`, …) — the "why" in a form a UI can show. The write filters on
+the `submittedAt` the admin read: if the patient edited the review in the meantime, the decision is
+refused — the M4 optimistic check, reused.
+
+A patient's edit sends the review back to PENDING, even a published one. M4 needed a draft/live
+split because hiding a treatment loses bookings; a review that disappears for a few hours loses
+nothing, so the simpler rule wins.
+
+### 3. The rating: derived data again
+
+`clinicRating` / `clinicReviews` and `doctorRating` / `doctorReviews` live on the cards (lists sort
+by them), but they are **recomputed**, never incremented: after any change that moves a review in
+or out of ACTIVE (`movesRating`), a `$group` by star over the ACTIVE reviews gives the count and the
+average, written whole with `$set` — exactly how M4 keeps `clinicMinPrice`.
+
+Why not `$inc`? A rating needs a sum and a count kept in step through approve, hide, restore, edit
+and delete; one missed or doubled event and it is wrong forever. The recompute is idempotent and
+heals on the next change; a batch (M9) can rebuild everything. Reviews change rarely, so the cost
+is irrelevant.
+
+The five bars ("5 → 86%") are not stored at all: `getReviews` computes them in a `$facet` branch
+next to the page, over every published review of the filter. "Needs reply" narrows the list branch
+only, so the dashboard bars still show all reviews.
+
+`summarize()` returns 0 for no reviews (never `NaN`) and rounds to one decimal (4.25 → 4.3).
+
+### 4. Public and private views of the same document
+
+The same review is seen four ways: the patient (with the admin's note and flags), the admin (all),
+the public and the clinic (published only, patient as "Feride K.", no note, no flags). Public
+queries strip the note in the projection **and** in `present()`. Honest note on testing: when the
+projection and the strip were removed on purpose, the Postman test did not turn red — an ACTIVE
+review never has a note, because APPROVE clears it. The strip is defence in depth for a state
+that cannot occur today; the test guards the flags, which do reach public cards if not removed.
+
+### 5. Testing time: a test-support mutation, locked twice
+
+M5's rules make a COMPLETED booking impossible in a test run: a booking starts at least 3 hours
+ahead, COMPLETED only after the start. Options were a seed script (Postman would not know its ids),
+Jest only (the real wiring untested), or a helper that moves a booking into the past.
+
+`devShiftBookingTime(bookingId, hours)` shifts the booking's dates and its slots in one transaction.
+Everything after it — COMPLETED, the review rules, the rating — runs through the real mutations;
+only the clock is faked. It is registered only when `ENABLE_TEST_SUPPORT=true` **and**
+`NODE_ENV !== 'production'`: in production the mutation is not in the GraphQL schema at all, so
+there is nothing to call or to guess. The M6 folder checks the flag first and says how to fix it.
+
+### 6. What the tests proved
+
+| Broken on purpose | Caught by |
+| --- | --- |
+| any booking status may be reviewed | Jest "refuses a CONFIRMED / CANCELLED / NO_SHOW booking" |
+| no 30-day window | Jest "refuses after 30 days" |
+| a second review allowed | Jest "refuses a second review" |
+| hide without a message | Jest "needs a message unless it approves" |
+| EDIT_REQUESTED may be approved | Jest table walk |
+| a PENDING change moves the rating | Jest `movesRating` |
+| the average not rounded | Jest `summarize` |
+| no rating refresh after moderation | Postman "rating 5 from one review", "(5 + 3) / 2 = 4.0", "a hidden review leaves the rating" |
+| any doctor may reply | Postman "Dr. Kim was not the doctor of this visit" |
+| the admin's note in public lists | **not caught** — see 4 |
+
+### Interview questions and answers
+
+**1. How do you make sure a review comes from a real patient of that clinic?**
+
+The review is written for a booking, not a clinic. The booking is loaded scoped to the caller, must be COMPLETED — which only the clinic can set, and only after the visit started — and within 30 days. The clinic, doctor and treatment are copied from the booking, never taken from input.
+
+**2. Two clicks on "Publish" — how do you stop two reviews?**
+
+The booking's `bookingReviewed` flag is set by a conditional update inside the same transaction as the insert; the second click finds it set. A unique index on `reviews.bookingId` is the backstop. Delete is soft, so the index also blocks "delete and write again".
+
+**3. Why recompute the rating instead of `$inc`?**
+
+A rating is a sum and a count that must stay in step through approve, hide, restore, edit and delete. One missed event and an incremented value is wrong forever. Recomputing from the published reviews is idempotent, heals on the next change and can be rebuilt by a batch; reviews change rarely, so it is cheap.
+
+**4. The admin approves a review the patient edited a second ago. What happens?**
+
+The moderation write filters on the `submittedAt` the admin read. The edit moved it, so nothing matches and the admin is asked to reload — optimistic concurrency, the same as treatment drafts in M4.
+
+**5. How do you test something that needs time to pass, without a back door in production?**
+
+Fake only the clock: a test-support mutation moves a booking into the past, and everything after it runs through the real code. The module is imported only when an explicit flag is set and the environment is not production, so in production the mutation does not even exist in the schema.
+
+**6. A test passed when you broke the feature. Is the test useless?**
+
+It showed the state it guards cannot occur: an ACTIVE review never carries the admin's note, because approval clears it. The strip stays as defence in depth, and the finding is written down instead of pretending the test proves more than it does.

@@ -164,3 +164,20 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | `treatmentBookingsMonth` counted by `$lookup` on read (CONFIRMED/COMPLETED/NO_SHOW in this Seoul month); no counter field. | A counter would move on confirm and every later status change, and drift. | One lookup per clinic table load. | `$inc` counter on the treatment. |
 | Seoul time by arithmetic (UTC+9), no timezone library. | Korea has no daylight saving time. | Wrong if ever reused for a zone with DST. | luxon / date-fns-tz. |
 | Cut: `slotEnd`, `respondedAt`, `cancelledAt`, `bookingQueue`, reschedule, AI summary, questionnaire photos; `bookingReviewed` moves to M6. | Derivable, or out of the portfolio scope. | — | Keep the ER model's full shape. |
+
+## M6 — Review
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| A review belongs to a booking (`bookingId` unique); clinic, doctor and treatment copied from it. | "Verified visit" by construction; no input can point a review at another clinic. | — | Review per clinic with a separate "verified" flag. |
+| Review only for the patient's own COMPLETED booking, within 30 days of `completedAt`. | Agreed in the review; fresh, real experiences. | Late reviewers are locked out. | No window; 90 days. |
+| `bookings.bookingReviewed` set conditionally in the review's transaction; never reset; delete is soft and final. | Two guards against a double review; no delete-and-rewrite rating gaming. | A patient who deleted by mistake cannot write again. | Hard delete; allow a new review after delete. |
+| Admin moderation before publishing; `MODERATION` table; non-approval needs a note; flags set by the admin; decisions audited. | Medical-ad rules; the patient must know what to fix. | Reviews wait for an admin. | Publish at once, hide after reports; keyword auto-flagging (left for AI). |
+| An edit of any review returns it to PENDING (no draft/live). | A hidden review loses nothing; M4's split is not worth it here. | A published review disappears until re-approved. | M4-style draft. |
+| Moderation filters on `submittedAt` the admin read. | No approving text the admin never saw. | Occasional reload. | No check. |
+| One public reply per review, by the clinic or the doctor of the visit; writing again replaces it; only on ACTIVE reviews; not moderated. | Mockup: "The doctor or the clinic can reply". | A clinic's reply is not checked against ad rules. | A reply thread; moderated replies. |
+| `clinicRating/Reviews`, `doctorRating/Reviews` recomputed from ACTIVE reviews and `$set` (one decimal); nullable in GraphQL for rows created before M6. | Idempotent, self-healing, rebuildable (clinicMinPrice pattern); lists sort by rating. | Two concurrent refreshes can leave a stale value until the next change (M9 rebuild). | `$inc` sum and count. |
+| Rating distribution computed per request in `$facet`, not stored. | Five numbers nobody sorts by. | One `$group` per list request. | Stored `clinicRatingCounts`. |
+| `getReviews` (public, ACTIVE) and `getMyReviews` (patient, all statuses) separate. | Public and private data never share a resolver (M5 rule). | Two queries. | One scoped query. |
+| `devShiftBookingTime` in a TestSupportModule, imported only with `ENABLE_TEST_SUPPORT=true` and `NODE_ENV !== 'production'`. | COMPLETED needs a past visit; only the clock is faked, the rest is real. | Test code in the repository. | Seed script; Jest only. |
+| Cut: `reviewImages`, `moderatedAt`, `moderatorId` (audit log), automatic flagging. | Before/after photos are banned anyway; who/when is in the audit log. | — | ER model as drawn. |

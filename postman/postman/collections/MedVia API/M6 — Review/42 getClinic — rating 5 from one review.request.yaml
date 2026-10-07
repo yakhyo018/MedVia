@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      query G($id: String!) { getClinic(clinicId: $id) { _id clinicRating clinicReviews } }
+    variables: |-
+      { "id": "{{clinicId}}" }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const d = gql.getClinic || {};
+      pm.test('clinicRating 5, clinicReviews 1', () => pm.expect([d.clinicRating, d.clinicReviews]).to.eql([5, 1]));
+    language: text/javascript
+order: 42000

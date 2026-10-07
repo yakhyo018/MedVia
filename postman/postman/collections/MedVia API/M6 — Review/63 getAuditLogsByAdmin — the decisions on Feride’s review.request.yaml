@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query Q($input: AuditLogsInquiry!) { getAuditLogsByAdmin(input: $input) { auditAction } }
+    variables: |-
+      { "input": { "auditGroup": "REVIEW", "auditRefId": "{{reviewAId}}" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('request edit, then approve', () => pm.expect((gql.getAuditLogsByAdmin || []).map((a) => a.auditAction)).to.eql(['REVIEW_APPROVE', 'REVIEW_REQUEST_CHANGES']));
+    language: text/javascript
+order: 63000

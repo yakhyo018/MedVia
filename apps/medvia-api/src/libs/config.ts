@@ -14,6 +14,7 @@ export const availableClinicSorts = [
 	'clinicLikes',
 	'clinicFollowers',
 	'clinicViews',
+	'clinicRating',
 ];
 
 /** Paths our own uploader returns. Anything else — an outside URL, `javascript:` — is refused. */
@@ -58,4 +59,5 @@ export const availableDoctorSorts = [
 	'doctorLikes',
 	'doctorFollowers',
 	'doctorViews',
+	'doctorRating',
 ];

@@ -30,8 +30,7 @@ const GeoPointSchema = new Schema(
  * A clinic's public page. The login lives in `members` (memberType AGENT), linked 1:1
  * by memberId. Listed only after an admin approves it.
  *
- * Counters here are the ones a clinic card or page reads on every view. Rating, review
- * count and rank arrive with the milestones that write them (M6, M9).
+ * Counters here are the ones a clinic card or page reads on every view. Rank arrives with M9.
  */
 const ClinicSchema = new Schema(
 	{
@@ -139,6 +138,18 @@ const ClinicSchema = new Schema(
 		},
 
 		clinicViews: {
+			type: Number,
+			default: 0,
+		},
+
+		// "4.9 · 312 reviews": average of the ACTIVE reviews (one decimal) and their count.
+		// Derived like clinicMinPrice: recomputed from `reviews`, never incremented.
+		clinicRating: {
+			type: Number,
+			default: 0,
+		},
+
+		clinicReviews: {
 			type: Number,
 			default: 0,
 		},

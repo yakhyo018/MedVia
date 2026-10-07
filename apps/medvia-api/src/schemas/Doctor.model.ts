@@ -19,7 +19,7 @@ const CareerItemSchema = new Schema(
  * the clinic together with this row. A doctor is shown only while both the doctor and
  * their clinic are ACTIVE — the clinic's status is read from `clinics`, never copied here.
  *
- * Rating, review count, answer count and rank arrive with M6, M8 and M9.
+ * Answer count and rank arrive with M8 and M9.
  */
 const DoctorSchema = new Schema(
 	{
@@ -85,6 +85,18 @@ const DoctorSchema = new Schema(
 		},
 
 		doctorFollowers: {
+			type: Number,
+			default: 0,
+		},
+
+		// Average of the ACTIVE reviews (one decimal) and their count. Derived: recomputed from
+		// `reviews` after every review change, never incremented.
+		doctorRating: {
+			type: Number,
+			default: 0,
+		},
+
+		doctorReviews: {
 			type: Number,
 			default: 0,
 		},

@@ -5,7 +5,7 @@ import {
 	NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, ObjectId, PipelineStage, Types } from 'mongoose';
+import { ClientSession, Model, ObjectId, PipelineStage, Types } from 'mongoose';
 import { Booking, Bookings } from '../../libs/dto/booking/booking';
 import {
 	BookingCreateInput,
@@ -296,6 +296,31 @@ export class BookingService {
 		return !!(await this.bookingModel
 			.exists({ clinicId, doctorId, ...tabMatch(BookingTab.UPCOMING, now) })
 			.exec());
+	}
+
+	/** The review module: one booking of this patient — another patient's id is "not found". */
+	public async findOwnBooking(memberId: ObjectId, bookingId: string): Promise<T> {
+		const booking = await this.bookingModel
+			.findOne({ _id: this.toObjectId(bookingId), memberId })
+			.lean()
+			.exec();
+		if (!booking) throw new NotFoundException(Messages.NO_DATA_FOUND);
+		return booking;
+	}
+
+	/**
+	 * Inside the review's transaction. Conditional, so two "Publish" clicks cannot both pass:
+	 * the second finds the flag already set. Never reset — a deleted review is final.
+	 */
+	public async markReviewed(bookingId: unknown, session: ClientSession): Promise<void> {
+		const result = await this.bookingModel
+			.updateOne(
+				{ _id: bookingId, bookingStatus: BookingStatus.COMPLETED, bookingReviewed: { $ne: true } },
+				{ $set: { bookingReviewed: true } },
+				{ session },
+			)
+			.exec();
+		if (result.modifiedCount !== 1) throw new BadRequestException(Messages.ALREADY_REVIEWED);
 	}
 
 	/* ───────────────────────── helpers ───────────────────────── */

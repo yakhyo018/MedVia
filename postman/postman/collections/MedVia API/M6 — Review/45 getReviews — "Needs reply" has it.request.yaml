@@ -1,0 +1,24 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      query L($input: ReviewsInquiry!) { getReviews(input: $input) { list { _id reviewStatus reviewRating reviewTags reviewFlags reviewContent reviewLang reviewNote submittedAt bookingId patientName clinicName doctorName treatmentName visitDate reviewReply { replyContent replyLang replierType repliedAt } } metaCounter { total } summary { rating reviews distribution { stars count } } } }
+    variables: |-
+      { "input": { "page": 1, "limit": 10, "clinicId": "{{clinicId}}", "needsReply": true } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('one to answer', () => pm.expect((((gql.getReviews || {}).metaCounter || [])[0] || {}).total).to.eql(1));
+    language: text/javascript
+order: 45000

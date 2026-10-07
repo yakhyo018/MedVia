@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-07 — M5 merged into `develop` and pushed._
+_Last updated: 2026-10-07 — M6 built on `feature/review`, waiting for the user's Postman run._
 
 ## The project
 
@@ -29,7 +29,7 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M4 | Treatment — `doctorIds[]`, draft/live review, clinic min price | ✅ done, merged (`9d33948`) |
 | M4.1 | Unit tests — Jest for the rule-heavy code (39 tests) | ✅ done, merged (`2dc3b3e`) |
 | M5 | Slot + Booking — atomic hold, transactions, state machine, consent | ✅ done, merged (`eb82b79`) |
-| **M6** | **Review — only after a COMPLETED booking** | **next** |
+| **M6** | **Review — only after a COMPLETED booking** | **built, Postman run by the user pending** |
 | M7 | Chat — socket.io rooms | |
 | AI-1 | Translator — questionnaire KO summary, chat / review / clinic-text translation (with M7) | |
 | M8 | Community + CS + Notification | |
@@ -37,25 +37,21 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M10 | Admin + audit log + faker seed | |
 | AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
 
-## Next step: M6 — start with the `reviews` collection review
+## Next step: the user runs the M6 Postman folder, then merge
 
-Bring these into the review:
+M6 is built on `feature/review` (not committed yet). Review → build → explain + LEARN.md are done.
+Left: the user runs `npm run test:api -- M6`, then commit and merge `feature/review` into `develop`.
 
-- A review needs a COMPLETED booking of the same patient; one review per booking (unique
-  `bookingId`). Add `bookingReviewed` to `bookings` then (cut from M5 on purpose).
-- COMPLETED is set by the clinic only after the visit starts (M5 `TRANSITIONS`); `completedAt`
-  exists for a review window ("write a review within N days").
-- Ratings feed `clinicRating` / `clinicReviews` and the doctor's — derived data: recompute, as
-  M4 did for `clinicMinPrice`, or `$inc` with a batch rebuild (M9).
-- The clinic's reply (`reviewReply`), and the admin's moderation (hide, with audit log).
-- M5's booking module: `MEDICAL_ENC_KEY` must be in `.env`; Postman M5 creates bookings 3 days
-  ahead — a COMPLETED booking for M6 tests needs a slot in the past (seed it directly, or let the
-  clinic open a slot that starts in a few minutes and wait).
+- `.env` needs `ENABLE_TEST_SUPPORT=true` (already set) — the M6 folder moves visits into the past
+  with `devShiftBookingTime`, which exists only with that flag and outside production.
+- 8 operations: `createReview`, `updateReview`, `removeReview`, `getMyReviews`, `replyToReview`,
+  `getReviews`, `getReviewsByAdmin`, `moderateReview`. Rules in `review.rules.ts`.
+- After M6: **M7 — Chat** (socket.io rooms) together with **AI-1 — Translator**.
 
 ## Session handoff — where the last session stopped
 
 - `develop` is pushed and clean; `main` is still M0 (on purpose, see Open items). No feature
-  branches are left; the next milestone starts with `git checkout -b feature/review develop`.
+  branches are left except `feature/review` (M6, until it is merged).
 - Work only in `~/Desktop/MedVia` — never in a git worktree. If the desktop app starts a session
   inside `.claude/worktrees/…`, its hook blocks the Write tool on the main folder; open the session
   in `~/Desktop/MedVia` instead.
@@ -65,7 +61,7 @@ Bring these into the review:
 - Atlas Search: index `clinic_search` exists and is READY, with `clinicName`, `clinicNameKo`,
   `clinicDesc` and `clinicTreatmentNames` mapped; `.env` has `ATLAS_SEARCH_INDEX=clinic_search`.
   New mapped fields must be added by the user in Compass (Indexes → Search Indexes → Edit).
-- Last full runs (2026-10-07, M5 branch): Newman M0–M5 green (684 assertions), Jest 96/96,
+- Last full runs (2026-10-07, M6 branch): Newman M0–M6 green (791 assertions), Jest 110/110,
   `npm run typecheck`, `lint:check`, `build` clean.
 - Merge routine the user expects after "commit qilib develop'ga merge qil": stage by name, read the
   diff, secret scan → commit → `git merge --no-ff` into `develop` → close the milestone here →

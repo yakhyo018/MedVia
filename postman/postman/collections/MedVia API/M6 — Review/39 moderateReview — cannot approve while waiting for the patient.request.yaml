@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation M($input: ReviewModerationInput!) { moderateReview(input: $input) { _id reviewStatus reviewRating reviewTags reviewFlags reviewContent reviewLang reviewNote submittedAt bookingId patientName clinicName doctorName treatmentName visitDate reviewReply { replyContent replyLang replierType repliedAt } } }
+    variables: |-
+      { "input": { "reviewId": "{{reviewAId}}", "decision": "APPROVE" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test("refused: This decision is not possible", () => pm.expect(msg).to.include("This decision is not possible"));
+      pm.test('code BAD_REQUEST', () => pm.expect(code).to.eql('BAD_REQUEST'));
+    language: text/javascript
+order: 39000
