@@ -18,6 +18,7 @@ import { T } from '../../libs/types/common';
 import { shapeIntoMongoObjectId } from '../../libs/config';
 import { ClinicService } from '../clinic/clinic.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { planLiveEdit } from './treatment.rules';
 
 /** Never approved yet: every edit applies at once, the treatment is still under review. */
 const NEVER_LIVE = [TreatmentStatus.PENDING, TreatmentStatus.CHANGES_REQUESTED];
@@ -25,21 +26,7 @@ const NEVER_LIVE = [TreatmentStatus.PENDING, TreatmentStatus.CHANGES_REQUESTED];
 /** Approved at least once: medical-ad edits wait in the draft. */
 const LIVE = [TreatmentStatus.ACTIVE, TreatmentStatus.HIDDEN];
 
-/** Covered by medical-ad rules → reviewed. Price is handled separately (only a decrease waits). */
-const DRAFT_FIELDS = [
-	'treatmentName',
-	'treatmentCategory',
-	'treatmentPriceNote',
-	'treatmentDesc',
-	'treatmentImages',
-] as const;
-
-/** Operational: no advertising claim in them, so they apply immediately. */
-const DIRECT_FIELDS = ['treatmentDuration', 'treatmentLangs', 'treatmentAftercare'] as const;
-
 const AUTO_HIDDEN_NOTE = 'Hidden automatically: no doctor of the clinic performs it any more.';
-
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 @Injectable()
 export class TreatmentService {
@@ -95,8 +82,9 @@ export class TreatmentService {
 		if (NEVER_LIVE.includes(current.treatmentStatus)) {
 			Object.assign(set, this.defined(fields));
 		} else {
-			for (const key of DIRECT_FIELDS) if (fields[key] !== undefined) set[key] = fields[key];
-			this.shapeDraft(current, fields, set, unset);
+			const plan = planLiveEdit(current, fields);
+			Object.assign(set, plan.set);
+			Object.assign(unset, plan.unset);
 		}
 
 		const update: T = {};
@@ -452,38 +440,6 @@ export class TreatmentService {
 	}
 
 	/* ───────────────────────── helpers ───────────────────────── */
-
-	/**
-	 * Draft rules for a live treatment. A draft field equal to the live value is dropped (the
-	 * clinic undid its edit); a higher price applies now and clears any waiting lower price.
-	 */
-	private shapeDraft(current: T, fields: T, set: T, unset: T): void {
-		const draft: T = { ...(current.treatmentDraft ?? {}) };
-		delete draft.submittedAt;
-		let touched = false;
-
-		for (const key of DRAFT_FIELDS) {
-			if (fields[key] === undefined) continue;
-			touched = true;
-			if (same(fields[key], current[key])) delete draft[key];
-			else draft[key] = fields[key];
-		}
-
-		if (fields.treatmentPrice !== undefined) {
-			touched = true;
-			if (fields.treatmentPrice >= current.treatmentPrice) {
-				if (fields.treatmentPrice !== current.treatmentPrice)
-					set.treatmentPrice = fields.treatmentPrice;
-				delete draft.treatmentPrice;
-			} else {
-				draft.treatmentPrice = fields.treatmentPrice;
-			}
-		}
-
-		if (!touched) return;
-		if (Object.keys(draft).length) set.treatmentDraft = { ...draft, submittedAt: new Date() };
-		else if (current.treatmentDraft) unset.treatmentDraft = 1;
-	}
 
 	/** All ids must be doctors of this clinic that are not deleted. */
 	private async validDoctors(clinicId: unknown, ids: string[]): Promise<ObjectId[]> {

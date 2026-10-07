@@ -27,6 +27,7 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M2 | Clinic — AGENT CRUD, admin verification, list/detail, follow/like/view | ✅ done, merged (`eb6a1fa`) |
 | M3 | Doctor — accounts created by the clinic (+ M3.1: shared `likeTarget`, flags on cards) | ✅ done, merged (`a96ac33`) |
 | M4 | Treatment — `doctorIds[]`, draft/live review, clinic min price | ✅ done, merged (`9d33948`) |
+| M4.1 | Unit tests — Jest for the rule-heavy code (39 tests) | built on `feature/unit-tests` |
 | **M5** | **Slot + Booking — atomic hold, transactions, state machine, consent** | **next** |
 | M6 | Review — only after a COMPLETED booking | |
 | M7 | Chat — socket.io rooms | |
@@ -94,5 +95,6 @@ npm run start:dev              # API on :3000 (Atlas + local Redis via brew)
 npm run seed:admin             # once; needs ADMIN_EMAIL / ADMIN_PASSWORD in .env
 npm run test:api               # all Postman folders (needs the API running)
 npm run test:api -- M1         # one milestone
+npm test                       # Jest unit tests (no API, no database needed)
 npm run typecheck && npm run lint:check && npm run build
 ```

@@ -6,7 +6,6 @@ import type { Request, Response } from 'express';
 import { Clinic, Clinics } from '../../libs/dto/clinic/clinic';
 import {
 	AdminClinicsInquiry,
-	ClinicHourInput,
 	ClinicReviewInput,
 	ClinicSignupInput,
 	ClinicsInquiry,
@@ -30,6 +29,7 @@ import { LikeService } from '../like/like.service';
 import { ViewService } from '../view/view.service';
 import { FollowService } from '../follow/follow.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { normalizeHours } from './clinic.rules';
 
 /** Short: the list carries counters, and a stale count is visible. */
 const LIST_TTL_SECONDS = 60;
@@ -155,7 +155,7 @@ export class ClinicService implements OnModuleInit {
 				coordinates: [clinicLocation.lng, clinicLocation.lat],
 			};
 		}
-		if (clinicHours) update.clinicHours = this.normalizeHours(clinicHours);
+		if (clinicHours) update.clinicHours = normalizeHours(clinicHours);
 
 		const updated = await this.clinicModel
 			.findOneAndUpdate(
@@ -608,22 +608,6 @@ export class ClinicService implements OnModuleInit {
 			lng !== undefined &&
 			(input.clinicLocation.lng !== lng || input.clinicLocation.lat !== lat);
 		if (changed || pinMoved) throw new BadRequestException(Messages.CLINIC_FIELDS_LOCKED);
-	}
-
-	/** One row per weekday; an open day needs both times and opens before it closes. */
-	private normalizeHours(hours: ClinicHourInput[]): T[] {
-		const days = new Set(hours.map((h) => h.day));
-		if (days.size !== hours.length) throw new BadRequestException(Messages.INVALID_HOURS);
-
-		return hours
-			.map((h) => {
-				if (h.closed) return { day: h.day, closed: true };
-				// "HH:mm" strings compare correctly as text.
-				if (!h.open || !h.close || h.open >= h.close)
-					throw new BadRequestException(Messages.INVALID_HOURS);
-				return { day: h.day, open: h.open, close: h.close, closed: false };
-			})
-			.sort((a, b) => a.day - b.day);
 	}
 
 	/**
