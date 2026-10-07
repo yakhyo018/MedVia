@@ -108,3 +108,18 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | Text searches in `getClinics` are not cached; filter-only browsing is. | Low hit rate for free text, and caching a lagging index froze "not found" for the whole TTL after a clinic went live. | Every text search reaches Atlas. | Cache text searches with a short TTL; invalidate on index sync (no such signal). |
 | M2 search test retries (`setNextRequest`, 15 × 2 s) instead of a fixed wait. | Index lag measured 4–8 s and varies. | A slow index makes the suite slower, not red. | Longer fixed wait; skip the test with Atlas Search on. |
 | Role-specific list queries stay separate. | Mixing roles into one query mixes authorisation with filtering and needs the role in the cache key. | More resolvers. | One role-aware query. |
+
+## M4 — Treatment
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| `treatmentBookings` deferred to M5 (monthly aggregation), `treatmentRank` dropped. | The mockup shows bookings per month; no screen sorts treatments by rank. | — | All-time counter now. |
+| Edits of a live treatment: ad-relevant fields wait in `treatmentDraft`, operational fields apply at once. | Review without hiding the treatment and losing bookings. | Two versions to reason about. | Send the whole treatment back to PENDING on any edit. |
+| A higher price applies at once, a lower one waits for review. | Only a lower "from" price can be bait; a booking stores its own price copy. | A clinic could raise a price without review. | Review every price change. |
+| Review of an edit is version-checked (`draftSubmittedAt` in the filter). | The admin must not approve text the clinic changed after the admin read it. | The admin occasionally has to reload. | Lock the draft while an admin views it; no check. |
+| `clinicMinPrice` and `clinicTreatmentNames` on clinics, recomputed from ACTIVE treatments after every change. | One clinic query for price range and treatment-name search; recomputation is idempotent and self-healing. | Two concurrent refreshes can leave a stale value until the next change (M9 batch rebuilds). | `$lookup` on every list; a second `treatment_search` index and a two-step query. |
+| Treatment names searched through the existing `clinic_search` index (new mapped field). | One query, one index, relevance-ranked clinic results. | The Atlas mapping must be updated by hand. | A separate `treatment_search` index. |
+| `removeDoctor` pulls the doctor from treatments in its transaction and hides treatments left without a doctor. | A treatment nobody performs cannot be booked. | — | Refuse to remove a doctor who still has treatments. |
+| `getClinicTreatments` is not cached. | One indexed query per page; caching needs invalidation on treatment, doctor and clinic changes. | More reads under heavy traffic. | Cache per clinic and doctor filter. |
+| `ClinicDecision` renamed `ReviewDecision` and shared by clinic and treatment review. | Same three admin buttons. | GraphQL enum name changed (no client depends on it yet). | A second identical enum. |
+| No likes or views for treatments. | There is no treatment page in the mockups. | — | Register a TREATMENT like handler. |

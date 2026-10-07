@@ -967,3 +967,113 @@ role in every cache key — the leak above, in another shape.
 5. Why not one `getDoctors` that returns different data for guests, clinics and admins?
 6. A search right after a write returns nothing for a full minute, although the search index
    caught up in five seconds. What happened, and which requests should not be cached?
+
+---
+
+## M4 — Treatment
+
+### 1. What an index is (asked during the review)
+
+A sorted copy of one or more fields, each entry pointing at its document — the index at the back
+of a book. Without one, MongoDB reads every document (`COLLSCAN`); with one it jumps to the right
+place (`IXSCAN`). M2 measured it: 20 000 documents examined without, 10 with.
+
+It is not free: every insert and update writes the document **and every index on it**, and
+indexes want RAM. That is why the unused `views` index was dropped in M3.
+
+MedVia uses two kinds:
+
+| | Regular index (B-tree) | Search index (Atlas Search, Lucene) |
+| --- | --- | --- |
+| Stores | field values, sorted | word → list of documents containing it (inverted index) |
+| Good for | `=`, `$in`, ranges, sort | words, typos (fuzzy), Korean morphology, relevance |
+| Lives | inside MongoDB, updated with the write | in a separate process, seconds behind |
+
+New this milestone: a **multikey** index on `doctorIds` (an array — one index entry per element,
+so "treatments of Dr. Han" is an index lookup) and a **partial** index on
+`treatmentDraft.submittedAt` (only documents that have a draft are in it, so the admin's edit
+queue costs nothing for the thousands of treatments without one).
+
+### 2. Draft and live: reviewing an edit without taking the page down
+
+Medical-ad rules require an admin to check what a clinic advertises. A new treatment simply waits
+(PENDING). An edit of a live treatment is harder: sending the treatment back to review would hide
+it, and the clinic would lose bookings for a typo fix.
+
+So a live treatment has two versions. The **live** fields keep serving patients; the edited
+**ad-relevant** fields (name, category, note, description, photos) wait in `treatmentDraft`. On
+approval the draft is copied over the live fields; on rejection it is dropped and the note says
+why. Operational fields (doctors, duration, languages, aftercare) carry no advertising claim and
+apply at once. Patients never see a draft — the public query projects it away.
+
+**Price is split by direction**, because the risk is one-sided:
+
+| Change | Applied | Why |
+| --- | --- | --- |
+| higher | at once | misleads no one; the clinic should not have to serve at the old price |
+| lower | waits in the draft | "from ₩10,000" to draw patients in is exactly what the review catches |
+
+A patient who already booked is unaffected either way: the booking (M5) stores a copy of the
+price at that moment.
+
+### 3. Optimistic concurrency: the admin approves what the admin saw
+
+The admin opens an edit, reads it for a minute, clicks "Approve". Meanwhile the clinic changed
+the draft. Without a guard, the approval would publish text no admin ever read.
+
+Every change of the draft moves `treatmentDraft.submittedAt`. The review page sends back the
+version it showed (`draftSubmittedAt`), and the approval filters on it:
+
+```ts
+findOneAndUpdate({ _id, 'treatmentDraft.submittedAt': seen }, { $set: draft, $unset: { treatmentDraft: 1 } })
+```
+
+If the version moved, the filter matches nothing and the admin is told to reload. No lock is held
+while the admin reads — the check happens in the write. This is **optimistic concurrency control**;
+the same idea as an HTTP `If-Match` / ETag, or a `version` column in SQL. The Postman suite
+reproduces the race: approving the earlier version is refused, approving the current one works.
+
+### 4. Derived data: rebuilt, not kept in sync
+
+`clinics.clinicMinPrice` ("From ₩80,000") and `clinics.clinicTreatmentNames` (so one clinic search
+finds "laser toning") are copies of treatment data. M3 rejected a copied `clinicActive` flag — so
+why are these fine?
+
+- **Recomputed from the source, written whole.** After every treatment change:
+  `$group` over the ACTIVE treatments → `$min` price and the set of names → `$set` on the clinic.
+  An `$inc`-style adjustment cannot work at all: hiding the cheapest treatment needs the
+  *next*-cheapest, which only the source knows.
+- **Idempotent.** Running the refresh twice gives the same result, so a retry is harmless, and a
+  batch job (M9) can rebuild every clinic from scratch.
+- **Self-healing.** If a refresh is lost (crash between the two writes), the next treatment change
+  recomputes the truth. A synchronised flag stays wrong until someone notices.
+
+The remaining window: two treatment changes of one clinic at the same moment can interleave so
+the older refresh writes last. The value is then stale until the next change — acceptable for a
+"from" price, and the M9 batch closes it.
+
+### 5. Removing a doctor ripples into treatments
+
+`removeDoctor` now also `$pull`s the doctor from every treatment of the clinic and hides the live
+treatments left with no doctor (with a note saying why) — inside the same transaction as the
+doctor and account changes. `showTreatment` refuses while no doctor is assigned: patients book a
+doctor, not a treatment. The clinic summary is refreshed after the commit, because the hidden
+treatment may have been the cheapest.
+
+### 6. A test that passed for the wrong reason
+
+The first version of "search by treatment name finds the clinic" passed — but the clinic name and
+the treatment name shared the same timestamp token, so the clinic was found by its **own name**.
+With a token only the treatment name has, the test failed as it should: the Atlas mapping did not
+contain `clinicTreatmentNames` yet. A green test only proves something if it would fail without
+the feature.
+
+### Interview questions
+
+1. What does an index cost on writes, and why did you drop one in M3?
+2. What is a multikey index? A partial index? Where did you use each?
+3. How do you let an admin review an edit without taking the live page down?
+4. Why does a price increase skip review while a decrease waits?
+5. The admin approves an edit the clinic changed a second ago. How do you stop that without a lock?
+6. You copy the minimum price onto the clinic. Why is that safe here when a copied status flag was not?
+7. A test passed, yet the feature did not work. How did that happen, and how do you avoid it?
