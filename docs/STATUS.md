@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-07, after M4.1 merged into `develop`._
+_Last updated: 2026-10-07, end of session — M4.1 and the spec type-check fix merged and pushed._
 
 ## The project
 
@@ -48,21 +48,49 @@ Bring these into the review:
 - Clinic opening hours (`clinicHours`) bound the slots that can exist.
 - The 10-minute hold and its release: a BullMQ delayed job comes in M9 — decide what M5 does
   without it (a lazy expiry check on read, or a sweep).
+- The booking state machine is rule-heavy: put the transitions in a pure `booking.rules.ts` and
+  cover them with Jest, as M4.1 did for treatments.
 
-## What M3 left for later
+## Session handoff — where the last session stopped
 
-- The obsolete `views` index `{ memberId, viewGroup, updatedAt }` is still in Atlas — Mongoose
-  creates indexes but never drops them. Drop it once (Compass → views → Indexes).
-- `memberMustChangePassword` is not enforced by the server (see DECISIONS).
+- `develop` is pushed and clean; `main` is still M0 (on purpose, see Open items). No feature
+  branches are left; the next milestone starts with `git checkout -b feature/booking develop`.
+- Work only in `~/Desktop/MedVia` — never in a git worktree. If the desktop app starts a session
+  inside `.claude/worktrees/…`, its hook blocks the Write tool on the main folder; open the session
+  in `~/Desktop/MedVia` instead.
+- The user runs the API with `npm run start:dev` on :3000 (watch mode). When it is not running,
+  start a build on another port and point the suite at it:
+  `PORT_API=3100 node dist/apps/medvia-api/main` + `BASE_URL=http://localhost:3100 npm run test:api`.
+- Atlas Search: index `clinic_search` exists and is READY, with `clinicName`, `clinicNameKo`,
+  `clinicDesc` and `clinicTreatmentNames` mapped; `.env` has `ATLAS_SEARCH_INDEX=clinic_search`.
+  New mapped fields must be added by the user in Compass (Indexes → Search Indexes → Edit).
+- Last full runs: Newman M0–M4 green (548 assertions), Jest 39/39, `npm run typecheck` (app +
+  specs), `lint:check`, `build` clean.
+- Merge routine the user expects after "commit qilib develop'ga merge qil": stage by name, read the
+  diff, secret scan → commit → `git merge --no-ff` into `develop` → close the milestone here →
+  scan the unpushed range → `git push origin develop` → `git branch -d` the merged branch.
 
-## What M2 left for later
+### Lessons that cost time — do not repeat
 
-- **Atlas Search index** is not created yet. Create `clinic_search` in Atlas from
-  `docs/atlas-search/clinics.json`, then set `ATLAS_SEARCH_INDEX=clinic_search` in `.env`.
-  Until then the clinic text search is an escaped regex on the two names.
-- **ER model** (`~/Desktop/MedVia-design/er/model.js`) still shows the pre-review `clinics` and
-  `follows`. The schemas in `apps/medvia-api/src/schemas` are the truth.
-- `clinicFollowers` and the follow row are two writes; a recount belongs in the M9 batch.
+- **A test proves something only if it can fail.** Break the feature, watch the test go red,
+  restore (M4: a search test passed through the clinic name; M4.1: done for every unit test).
+- **Postman test data must be unique to the path under test** — no shared tokens between a clinic
+  name and a treatment name.
+- **Atlas Search is eventually consistent** (4–8 s). Tests that search right after a write retry
+  with `setNextRequest`; never cache text-search results (M3.1).
+- **`npm test` does not type-check** (ts-jest + `isolatedModules`); `npm run typecheck` does.
+- **Postman sandbox globals** (`data`, `tests`, …) must never be declared in scripts.
+- **Mongoose never drops an index** removed from a schema; drop it in Compass.
+
+
+## Left for later
+
+- `memberMustChangePassword` is not enforced by the server (see DECISIONS, M3).
+- **ER model** (`~/Desktop/MedVia-design/er/model.js`) still shows the pre-review collections.
+  The schemas in `apps/medvia-api/src/schemas` are the truth.
+- `clinicFollowers` vs the follow rows, and `clinicMinPrice` under two concurrent refreshes, can
+  drift; a recount belongs in the M9 batch.
+- Korean partial search (`피부과` inside `피부과의원`) would need an `autocomplete` mapping.
 
 ## Open items
 
@@ -85,7 +113,10 @@ The full rules are in `CLAUDE.md`. The ones a new session must not miss:
    the user runs it → merge. No schema before the review; no merge before the user's Postman run.
 3. **Teach, not just build:** problem → alternatives with trade-offs → code → 3–5 interview
    questions **with answers**, recorded in `LEARN.md`. The user does not want to end up a vibecoder.
-4. **Ask before risky or outward actions** (push, history rewrites). Never touch `~/Desktop/Nestar`.
+   The user asks many "what is X / why" questions mid-milestone — answer them simply, with the
+   project's own examples, then continue.
+4. **Ask before risky or outward actions** (history rewrites, `main`). Pushing `develop` after a
+   milestone merge is agreed. Never touch `~/Desktop/Nestar`.
 5. **Commit hygiene:** stage by name, read the staged diff, run the secret scan from `CLAUDE.md`.
 
 ## How to run
