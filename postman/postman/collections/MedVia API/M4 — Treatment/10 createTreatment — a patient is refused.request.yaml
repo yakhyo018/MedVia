@@ -1,0 +1,34 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation CreateTreatment($input: TreatmentCreateInput!) {
+        createTreatment(input: $input) { _id treatmentStatus treatmentName treatmentPrice treatmentDuration treatmentDesc treatmentReviewNote doctorIds doctors { _id } treatmentDraft { treatmentPrice treatmentDesc treatmentName submittedAt } }
+      }
+    variables: |-
+      {
+        "input": {
+          "treatmentName": "{{treatmentName}}", "treatmentCategory": "PIGMENTATION", "treatmentDuration": 30,
+          "treatmentPrice": 99000, "treatmentPriceNote": "Per session, before tax",
+          "treatmentDesc": "Low-energy laser for even skin tone.", "treatmentLangs": ["KO", "EN", "RU"],
+          "treatmentAftercare": "Use SPF 50 for 7 days.", "doctorIds": ["{{doctorAId}}"]
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('refused: Allowed only for members with specific roles!', () => pm.expect(msg).to.include("Allowed only for members with specific roles!"));
+      pm.test('code FORBIDDEN', () => pm.expect(code).to.eql('FORBIDDEN'));
+    language: text/javascript
+order: 10000

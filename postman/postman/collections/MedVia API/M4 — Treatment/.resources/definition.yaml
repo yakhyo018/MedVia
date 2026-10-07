@@ -1,0 +1,3 @@
+$kind: collection
+description: Treatments of a clinic with their doctors; admin review of new treatments and of edits (draft/live, a lower price waits, a higher one applies at once, a stale approval is refused); hide/show; a removed doctor hides the treatments nobody performs; clinicMinPrice and treatment names recomputed on the clinic; price-range and treatment-name search. Self-contained. Needs ADMIN_EMAIL / ADMIN_PASSWORD in .env. With ATLAS_SEARCH_INDEX set, the clinic_search mapping must include clinicTreatmentNames (docs/atlas-search/clinics.json).
+order: 5000

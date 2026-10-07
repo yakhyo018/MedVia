@@ -1,0 +1,26 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query Q($input: AuditLogsInquiry!) { getAuditLogsByAdmin(input: $input) { auditAction } }
+    variables: |-
+      { "input": { "auditGroup": "TREATMENT", "auditRefId": "{{treatmentId}}" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('edit approved, then (earlier) approved', () => pm.expect((gql.getAuditLogsByAdmin || []).map((l) => l.auditAction)).to.eql(['TREATMENT_EDIT_APPROVE', 'TREATMENT_APPROVE']));
+      pm.test('the refused stale approval was not logged', () => pm.expect(gql.getAuditLogsByAdmin).to.have.length(2));
+    language: text/javascript
+order: 61000

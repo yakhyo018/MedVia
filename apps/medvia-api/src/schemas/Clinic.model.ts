@@ -31,7 +31,7 @@ const GeoPointSchema = new Schema(
  * by memberId. Listed only after an admin approves it.
  *
  * Counters here are the ones a clinic card or page reads on every view. Rating, review
- * count, min price and rank arrive with the milestones that write them (M4, M6, M9).
+ * count and rank arrive with the milestones that write them (M6, M9).
  */
 const ClinicSchema = new Schema(
 	{
@@ -112,6 +112,20 @@ const ClinicSchema = new Schema(
 		// The admin's message on "request changes" or "reject". Shown to the clinic.
 		clinicReviewNote: {
 			type: String,
+		},
+
+		// Lowest price of the clinic's ACTIVE treatments ("From ₩99,000"); null without any.
+		// Derived: recomputed from `treatments` on every treatment change, never incremented.
+		clinicMinPrice: {
+			type: Number,
+			default: null,
+		},
+
+		// Names of the ACTIVE treatments, copied so one search over clinics also finds
+		// "laser toning". Derived the same way as clinicMinPrice — rebuilt, not kept in sync.
+		clinicTreatmentNames: {
+			type: [String],
+			default: [],
 		},
 
 		clinicLikes: {

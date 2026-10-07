@@ -1,0 +1,42 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      query G($input: ClinicsInquiry!) { getClinics(input: $input) { list { _id clinicMinPrice } } }
+    variables: |-
+      { "input": { "page": 1, "limit": 10, "search": { "text": "{{treatmentName}}" } } }
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Atlas Search follows the collection a few seconds behind; the request retries (see the
+      // test script). Without ATLAS_SEARCH_INDEX the regex reads clinicTreatmentNames directly.
+      setTimeout(() => {}, 2000);
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      const page = gql.getClinics || {};
+      const found = (page.list || []).some((x) => x._id === pm.environment.get('clinicId'));
+      const tries = Number(pm.environment.get('searchTries') || 0);
+      const MAX_TRIES = 15;
+      if (!found && !body.errors && tries < MAX_TRIES) {
+        pm.environment.set('searchTries', String(tries + 1));
+        if (pm.execution && pm.execution.setNextRequest) pm.execution.setNextRequest(pm.info.requestName);
+        else postman.setNextRequest(pm.info.requestName);
+      } else {
+        pm.environment.unset('searchTries');
+        pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+        pm.test('the clinic is found by its treatment (after ' + tries + ' retries)', () =>
+          pm.expect(found, 'not found — with ATLAS_SEARCH_INDEX set, add clinicTreatmentNames to the clinic_search mapping').to.be.true);
+      }
+    language: text/javascript
+order: 64000

@@ -35,11 +35,3 @@ export enum District {
 	SONGPA = 'SONGPA',
 }
 registerEnumType(District, { name: 'District' });
-
-/** The three buttons on the admin verification page. */
-export enum ClinicDecision {
-	APPROVE = 'APPROVE',
-	REQUEST_CHANGES = 'REQUEST_CHANGES',
-	REJECT = 'REJECT',
-}
-registerEnumType(ClinicDecision, { name: 'ClinicDecision' });

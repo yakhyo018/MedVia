@@ -35,6 +35,11 @@ export enum Messages {
 	NOT_FOLLOWING = 'You do not follow this member!',
 	UPLOAD_TARGET_DENIED = 'You cannot upload images for this target!',
 	CLINIC_CANNOT_ADD_DOCTORS = 'A rejected or deleted clinic cannot add doctors!',
+	CLINIC_CANNOT_ADD_TREATMENTS = 'A rejected or deleted clinic cannot add treatments!',
+	INVALID_DOCTORS = 'Choose at least one doctor of this clinic!',
+	TREATMENT_NEEDS_DOCTOR = 'Assign at least one doctor before showing this treatment!',
+	DRAFT_CHANGED = 'The clinic changed this edit while you were reviewing it, please reload!',
+	NOTHING_TO_REVIEW = 'There is nothing waiting for review on this treatment!',
 }
 
 export enum Direction {

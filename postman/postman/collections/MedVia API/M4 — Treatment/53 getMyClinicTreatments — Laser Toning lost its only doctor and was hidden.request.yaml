@@ -1,0 +1,27 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query { getMyClinicTreatments { _id treatmentStatus treatmentReviewNote doctorIds } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const list = gql.getMyClinicTreatments || [];
+      const t1 = list.find((t) => t._id === pm.environment.get('treatmentId')) || {};
+      const t2 = list.find((t) => t._id === pm.environment.get('treatment2Id')) || {};
+      pm.test('Laser Toning: no doctors, HIDDEN, reason given', () => pm.expect([t1.doctorIds, t1.treatmentStatus, String(t1.treatmentReviewNote).includes('no doctor')]).to.eql([[], 'HIDDEN', true]));
+      pm.test('Pico Laser keeps Dr. Kim and stays ACTIVE', () => pm.expect([t2.doctorIds, t2.treatmentStatus]).to.eql([[pm.environment.get('doctorBId')], 'ACTIVE']));
+    language: text/javascript
+order: 53000
