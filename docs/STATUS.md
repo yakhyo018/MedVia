@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-07, after M4 merged into `develop`._
+_Last updated: 2026-10-07, after M4.1 merged into `develop`._
 
 ## The project
 
@@ -27,7 +27,7 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M2 | Clinic — AGENT CRUD, admin verification, list/detail, follow/like/view | ✅ done, merged (`eb6a1fa`) |
 | M3 | Doctor — accounts created by the clinic (+ M3.1: shared `likeTarget`, flags on cards) | ✅ done, merged (`a96ac33`) |
 | M4 | Treatment — `doctorIds[]`, draft/live review, clinic min price | ✅ done, merged (`9d33948`) |
-| M4.1 | Unit tests — Jest for the rule-heavy code (39 tests) | built on `feature/unit-tests` |
+| M4.1 | Unit tests — Jest for the rule-heavy code (39 tests) | ✅ done, merged (`2dc3b3e`) |
 | **M5** | **Slot + Booking — atomic hold, transactions, state machine, consent** | **next** |
 | M6 | Review — only after a COMPLETED booking | |
 | M7 | Chat — socket.io rooms | |
@@ -84,7 +84,7 @@ The full rules are in `CLAUDE.md`. The ones a new session must not miss:
 2. **Every milestone:** collection review with the user → build → explain → Postman folder →
    the user runs it → merge. No schema before the review; no merge before the user's Postman run.
 3. **Teach, not just build:** problem → alternatives with trade-offs → code → 3–5 interview
-   questions, recorded in `LEARN.md`. The user does not want to end up a vibecoder.
+   questions **with answers**, recorded in `LEARN.md`. The user does not want to end up a vibecoder.
 4. **Ask before risky or outward actions** (push, history rewrites). Never touch `~/Desktop/Nestar`.
 5. **Commit hygiene:** stage by name, read the staged diff, run the secret scan from `CLAUDE.md`.
 
