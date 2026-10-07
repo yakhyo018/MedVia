@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-07 — M6 built on `feature/review`, waiting for the user's Postman run._
+_Last updated: 2026-10-07 — M6 merged into `develop` and pushed._
 
 ## The project
 
@@ -11,7 +11,7 @@ MedVia — portfolio project for Korean healthtech job applications. Foreign pat
 find verified Seoul clinics and book treatments in their own language. Not a business: no SMS, no
 outgoing email, no payments, no HIRA. The sample patient persona is **Feride Karimova**.
 
-- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M5
+- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M6
 - Design and data model: `~/Desktop/MedVia-design` — ER source `er/model.js`, mockup generators `source/`
 - ER model (24 collections): https://claude.ai/artifact/LiWJjgdBPcaLSjdGkefKcA
 - Clickable prototype (61 screens): https://claude.ai/artifact/Js6b1j85jbvBrxCSpNRiWt
@@ -29,29 +29,36 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M4 | Treatment — `doctorIds[]`, draft/live review, clinic min price | ✅ done, merged (`9d33948`) |
 | M4.1 | Unit tests — Jest for the rule-heavy code (39 tests) | ✅ done, merged (`2dc3b3e`) |
 | M5 | Slot + Booking — atomic hold, transactions, state machine, consent | ✅ done, merged (`eb82b79`) |
-| **M6** | **Review — only after a COMPLETED booking** | **built, Postman run by the user pending** |
-| M7 | Chat — socket.io rooms | |
+| M6 | Review — only after a COMPLETED booking | ✅ done, merged (`7839c2e`) |
+| **M7** | **Chat — socket.io rooms** | **next (with AI-1)** |
 | AI-1 | Translator — questionnaire KO summary, chat / review / clinic-text translation (with M7) | |
 | M8 | Community + CS + Notification | |
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
 | AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
 
-## Next step: the user runs the M6 Postman folder, then merge
+## Next step: M7 — Chat (with AI-1 Translator), start with the collection review
 
-M6 is built on `feature/review` (not committed yet). Review → build → explain + LEARN.md are done.
-Left: the user runs `npm run test:api -- M6`, then commit and merge `feature/review` into `develop`.
+Bring these into the review:
 
-- `.env` needs `ENABLE_TEST_SUPPORT=true` (already set) — the M6 folder moves visits into the past
-  with `devShiftBookingTime`, which exists only with that flag and outside production.
-- 8 operations: `createReview`, `updateReview`, `removeReview`, `getMyReviews`, `replyToReview`,
-  `getReviews`, `getReviewsByAdmin`, `moderateReview`. Rules in `review.rules.ts`.
-- After M6: **M7 — Chat** (socket.io rooms) together with **AI-1 — Translator**.
+- Who is in a room: the ER model has one room per `{memberId, clinicId}` (patient ↔ clinic);
+  `doctorId` is context only, and the doctor panel says "patient chat is handled by the clinic".
+  `SenderType` has DOCTOR — decide whether a doctor writes in the chat or not.
+- Patient writes in any of the 6 `Language` values ("Write in any language…"), the clinic in
+  Korean; every message keeps the original (`messageText`, `messageLang`) and
+  `messageTranslations[]`; "Show original" on both sides. Translation is AI-1 — decide what a
+  message looks like before it is translated (sent at once, translation arrives over the socket).
+- AI-1 scope agreed earlier (DECISIONS "AI — scope"): `components/ai` with `ai.service` as the only
+  door; health data only with the `AI_SUMMARY` consent, pseudonymised; AI never on the critical
+  path; Redis cache `ai:translation:<sha256>` with a TTL; a new package needs its reason stated.
+- Socket.IO auth with the access token (15 min) — what happens when it expires mid-connection.
+- Unread counters (`roomUnreadPatient`, `roomUnreadClinic`) vs `readAt` on messages.
+- Files in chat (`messageFile`, private storage) — likely cut, like questionnaire photos.
 
 ## Session handoff — where the last session stopped
 
 - `develop` is pushed and clean; `main` is still M0 (on purpose, see Open items). No feature
-  branches are left except `feature/review` (M6, until it is merged).
+  branches are left; the next milestone starts with `git checkout -b feature/chat develop`.
 - Work only in `~/Desktop/MedVia` — never in a git worktree. If the desktop app starts a session
   inside `.claude/worktrees/…`, its hook blocks the Write tool on the main folder; open the session
   in `~/Desktop/MedVia` instead.
