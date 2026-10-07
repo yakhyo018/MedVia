@@ -9,6 +9,7 @@ import { LikeModule } from '../like/like.module';
 import { ViewModule } from '../view/view.module';
 import { FollowModule } from '../follow/follow.module';
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { TreatmentModule } from '../treatment/treatment.module';
 import DoctorSchema from '../../schemas/Doctor.model';
 
 /**
@@ -25,6 +26,7 @@ import DoctorSchema from '../../schemas/Doctor.model';
 		ViewModule,
 		FollowModule,
 		AuditLogModule,
+		TreatmentModule,
 	],
 	providers: [DoctorResolver, DoctorService],
 	exports: [DoctorService],

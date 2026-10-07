@@ -9,11 +9,25 @@ export enum AuditAction {
 	CLINIC_RESTORE = 'CLINIC_RESTORE',
 	DOCTOR_SUSPEND = 'DOCTOR_SUSPEND',
 	DOCTOR_RESTORE = 'DOCTOR_RESTORE',
+	TREATMENT_APPROVE = 'TREATMENT_APPROVE',
+	TREATMENT_REQUEST_CHANGES = 'TREATMENT_REQUEST_CHANGES',
+	TREATMENT_REJECT = 'TREATMENT_REJECT',
+	TREATMENT_EDIT_APPROVE = 'TREATMENT_EDIT_APPROVE',
+	TREATMENT_EDIT_REJECT = 'TREATMENT_EDIT_REJECT',
 }
 registerEnumType(AuditAction, { name: 'AuditAction' });
 
 export enum AuditGroup {
 	CLINIC = 'CLINIC',
 	DOCTOR = 'DOCTOR',
+	TREATMENT = 'TREATMENT',
 }
 registerEnumType(AuditGroup, { name: 'AuditGroup' });
+
+/** The three buttons on every admin review page — clinics and treatments. */
+export enum ReviewDecision {
+	APPROVE = 'APPROVE',
+	REQUEST_CHANGES = 'REQUEST_CHANGES',
+	REJECT = 'REJECT',
+}
+registerEnumType(ReviewDecision, { name: 'ReviewDecision' });

@@ -15,8 +15,8 @@ import {
 import { ClinicUpdate } from '../../libs/dto/clinic/clinic.update';
 import { OrdinaryInquiry } from '../../libs/dto/common/inquiry';
 import { Member } from '../../libs/dto/member/member';
-import { AuditAction, AuditGroup } from '../../libs/enums/admin.enum';
-import { ClinicDecision, ClinicStatus } from '../../libs/enums/clinic.enum';
+import { AuditAction, AuditGroup, ReviewDecision } from '../../libs/enums/admin.enum';
+import { ClinicStatus } from '../../libs/enums/clinic.enum';
 import { Direction, Language, Messages } from '../../libs/enums/common.enum';
 import { LikeGroup } from '../../libs/enums/like.enum';
 import { MemberType } from '../../libs/enums/member.enum';
@@ -267,6 +267,15 @@ export class ClinicService implements OnModuleInit {
 							},
 							{ text: { query: text, path: 'clinicNameKo', score: { boost: { value: 3 } } } },
 							{ text: { query: text, path: 'clinicDesc', fuzzy: { maxEdits: 1 } } },
+							// "Laser toning" finds the clinics that offer it (names copied from treatments).
+							{
+								text: {
+									query: text,
+									path: 'clinicTreatmentNames',
+									fuzzy: { maxEdits: 1 },
+									score: { boost: { value: 2 } },
+								},
+							},
 						],
 						minimumShouldMatch: 1,
 					},
@@ -277,9 +286,18 @@ export class ClinicService implements OnModuleInit {
 		const match: T = { clinicStatus: ClinicStatus.ACTIVE };
 		if (text && !useSearch) {
 			const pattern = new RegExp(escapeRegex(text), 'i');
-			match.$or = [{ clinicName: pattern }, { clinicNameKo: pattern }];
+			match.$or = [
+				{ clinicName: pattern },
+				{ clinicNameKo: pattern },
+				{ clinicTreatmentNames: pattern },
+			];
 		}
 		if (search.specialty) match.clinicSpecialty = search.specialty;
+		if (search.priceMin !== undefined || search.priceMax !== undefined) {
+			match.clinicMinPrice = { $ne: null };
+			if (search.priceMin !== undefined) match.clinicMinPrice.$gte = search.priceMin;
+			if (search.priceMax !== undefined) match.clinicMinPrice.$lte = search.priceMax;
+		}
 		if (search.districts?.length) match.clinicDistrict = { $in: search.districts };
 		if (search.langs?.length) match.clinicLangs = { $in: search.langs };
 		if (search.interpreter) {
@@ -395,6 +413,25 @@ export class ClinicService implements OnModuleInit {
 			.exec()) as Clinic | null;
 	}
 
+	/**
+	 * Written by the treatment module after every treatment change: the lowest live price and
+	 * the live names, both recomputed from `treatments` by the caller. A $set of the full
+	 * value, never an $inc — the copy cannot drift, and writing it twice changes nothing.
+	 */
+	public async setTreatmentSummary(
+		clinicId: unknown,
+		minPrice: number | null,
+		names: string[],
+	): Promise<void> {
+		await this.clinicModel
+			.updateOne(
+				{ _id: clinicId },
+				{ $set: { clinicMinPrice: minPrice, clinicTreatmentNames: names } },
+			)
+			.exec();
+		await this.invalidateClinic(clinicId);
+	}
+
 	/** Used when a clinic account adds a doctor. */
 	public async findClinicByMember(memberId: ObjectId): Promise<Clinic | null> {
 		return (await this.clinicModel.findOne({ memberId }).lean().exec()) as Clinic | null;
@@ -456,7 +493,7 @@ export class ClinicService implements OnModuleInit {
 	public async reviewClinic(adminId: ObjectId, input: ClinicReviewInput): Promise<Clinic> {
 		const _id = this.toObjectId(input.clinicId);
 		const note = input.clinicReviewNote?.trim();
-		if (input.decision !== ClinicDecision.APPROVE && !note) {
+		if (input.decision !== ReviewDecision.APPROVE && !note) {
 			throw new BadRequestException(Messages.REVIEW_NOTE_REQUIRED);
 		}
 
@@ -465,7 +502,7 @@ export class ClinicService implements OnModuleInit {
 		let auditAction: AuditAction;
 
 		switch (input.decision) {
-			case ClinicDecision.APPROVE:
+			case ReviewDecision.APPROVE:
 				filter['clinicImages.0'] = { $exists: true };
 				filter['clinicLangs.0'] = { $exists: true };
 				update = {
@@ -474,11 +511,11 @@ export class ClinicService implements OnModuleInit {
 				};
 				auditAction = AuditAction.CLINIC_APPROVE;
 				break;
-			case ClinicDecision.REQUEST_CHANGES:
+			case ReviewDecision.REQUEST_CHANGES:
 				update = { $set: { clinicStatus: ClinicStatus.CHANGES_REQUESTED, clinicReviewNote: note } };
 				auditAction = AuditAction.CLINIC_REQUEST_CHANGES;
 				break;
-			case ClinicDecision.REJECT:
+			case ReviewDecision.REJECT:
 				update = { $set: { clinicStatus: ClinicStatus.REJECTED, clinicReviewNote: note } };
 				auditAction = AuditAction.CLINIC_REJECT;
 				break;

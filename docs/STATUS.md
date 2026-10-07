@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-07, after M3 + M3.1 merged into `develop`._
+_Last updated: 2026-10-07, M4 built on `feature/treatment`, waiting for the user's Postman run._
 
 ## The project
 
@@ -26,7 +26,7 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M1 | Member + Auth — `members`, `sessions`, refresh rotation, admin | ✅ done, merged (`2892148`) |
 | M2 | Clinic — AGENT CRUD, admin verification, list/detail, follow/like/view | ✅ done, merged (`eb6a1fa`) |
 | M3 | Doctor — accounts created by the clinic (+ M3.1: shared `likeTarget`, flags on cards) | ✅ done, merged (`a96ac33`) |
-| **M4** | **Treatment — `doctorIds[]`** | **next** |
+| **M4** | **Treatment — `doctorIds[]`, draft/live review, clinic min price** | **built on `feature/treatment`; Newman 547/548 (the treatment-name search waits for the Atlas mapping); user's Postman run pending** |
 | M5 | Slot + Booking — atomic hold, transactions, state machine, consent | |
 | M6 | Review — only after a COMPLETED booking | |
 | M7 | Chat — socket.io rooms | |
@@ -34,19 +34,18 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
 
-## Next step: M4 — start with the `treatments` collection review
+## Next step
 
-Bring these into the review:
-
-- `doctorIds[]` must hold doctors of the same clinic, at least one, all not DELETE.
-- `clinicMinPrice` (deferred from M2) — the lowest ACTIVE treatment price, kept in step on
-  every treatment write.
-- "Treatments 4" in the clinic's doctor table and "Treatments by Dr. Han" on the doctor page
-  are queries on `treatments.doctorIds`, not stored counters.
-- Treatment names in clinic search: a second Atlas Search index or a copied name list.
-- Admin review of treatments (`TreatmentStatus` PENDING → ACTIVE / REJECTED) — same
-  state-machine-in-the-filter pattern as clinics.
-- `likeTarget` already takes new groups: a treatment does not need likes per the mockups — confirm.
+1. **Update the Atlas Search mapping**: Compass → `clinics` → Indexes → Search Indexes →
+   `clinic_search` → edit → add `"clinicTreatmentNames": { "type": "string", "analyzer":
+   "lucene.standard" }` (see `docs/atlas-search/clinics.json`). Wait for READY.
+2. **The user runs `M4 — Treatment`** (`npm run test:api -- M4`). After it passes,
+   `feature/treatment` merges into `develop` with `--no-ff` and `develop` is pushed.
+3. **M5 — Slot + Booking**, starting with the `slots` and `bookings` review. Bring in:
+   - `bookingPrice` is a copy of `treatmentPrice` at booking time (M4 relies on it).
+   - A treatment of `treatmentDuration` holds `ceil(duration / 30)` consecutive slots of one doctor.
+   - Only ACTIVE treatments of ACTIVE clinics, with an ACTIVE doctor from `doctorIds`, are bookable.
+   - `treatmentBookings` per month for the clinic's treatment table.
 
 ## What M3 left for later
 
@@ -70,7 +69,8 @@ Bring these into the review:
 - `gh` CLI is not logged in, so milestones merge locally (`--no-ff`) instead of through PRs.
 - Postman writes run-time variables into `postman/postman/environments/MedVia Local.environment.yaml`.
   Check it before committing — it must never carry tokens or `adminPassword`.
-- Local branches `feature/member`, `feature/clinic`, `feature/doctor` and `claude/docs-clinics-review-b60bff` are fully merged and can be deleted.
+- `main` stays at M0 until the production release; each milestone is merged into `develop` and
+  `develop` is pushed. Merged `feature/*` branches are deleted locally after the merge.
 - Deploy constraint: frontend and API on one site (`medvia.uz` + `api.medvia.uz`) — Safari blocks
   third-party cookies, and the refresh token is a cookie.
 

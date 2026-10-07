@@ -1,0 +1,28 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation Review($input: TreatmentReviewInput!) {
+        reviewTreatment(input: $input) { _id treatmentStatus treatmentName treatmentPrice treatmentDuration treatmentDesc treatmentReviewNote doctorIds doctors { _id } treatmentDraft { treatmentPrice treatmentDesc treatmentName submittedAt } }
+      }
+    variables: |-
+      { "input": { "treatmentId": "{{treatment2Id}}", "decision": "REQUEST_CHANGES", "treatmentReviewNote": "Please state the number of sessions." } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const t = gql.reviewTreatment || {};
+      pm.test('status CHANGES_REQUESTED, note stored', () => pm.expect([t.treatmentStatus, t.treatmentReviewNote]).to.eql(['CHANGES_REQUESTED', 'Please state the number of sessions.']));
+    language: text/javascript
+order: 24000

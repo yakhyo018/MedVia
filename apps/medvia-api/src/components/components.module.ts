@@ -6,6 +6,7 @@ import { FollowModule } from './follow/follow.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { UploadModule } from './upload/upload.module';
 import { DoctorModule } from './doctor/doctor.module';
+import { TreatmentModule } from './treatment/treatment.module';
 import { ViewModule } from './view/view.module';
 
 @Module({
@@ -14,6 +15,7 @@ import { ViewModule } from './view/view.module';
 		MemberModule,
 		ClinicModule,
 		DoctorModule,
+		TreatmentModule,
 		FollowModule,
 		ViewModule,
 		AuditLogModule,

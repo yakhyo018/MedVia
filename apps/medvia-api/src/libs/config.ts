@@ -10,6 +10,7 @@ export const availableMemberSorts = [
 export const availableClinicSorts = [
 	'createdAt',
 	'clinicName',
+	'clinicMinPrice',
 	'clinicLikes',
 	'clinicFollowers',
 	'clinicViews',

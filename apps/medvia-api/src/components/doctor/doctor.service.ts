@@ -29,6 +29,7 @@ import { LikeService } from '../like/like.service';
 import { ViewService } from '../view/view.service';
 import { FollowService } from '../follow/follow.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { TreatmentService } from '../treatment/treatment.service';
 
 const LIST_TTL_SECONDS = 60;
 const DETAIL_TTL_SECONDS = 60;
@@ -75,6 +76,7 @@ export class DoctorService implements OnModuleInit {
 		private readonly viewService: ViewService,
 		private readonly followService: FollowService,
 		private readonly auditLogService: AuditLogService,
+		private readonly treatmentService: TreatmentService,
 		private readonly cacheService: CacheService,
 	) {}
 
@@ -178,9 +180,10 @@ export class DoctorService implements OnModuleInit {
 	}
 
 	/**
-	 * The page goes to DELETE and the account closes in the same transaction; the doctor is
-	 * signed out everywhere after the commit. Follows, likes and views stay as history —
-	 * every list already drops a doctor that is not ACTIVE.
+	 * The page goes to DELETE, the account closes and the doctor leaves every treatment — one
+	 * transaction (a treatment left without doctors is hidden). Sign-out happens after the
+	 * commit. Follows, likes and views stay as history — every list already drops a doctor
+	 * that is not ACTIVE.
 	 */
 	public async removeDoctor(agentId: ObjectId, doctorId: string): Promise<Doctor> {
 		const clinic = await this.ownClinic(agentId);
@@ -198,7 +201,10 @@ export class DoctorService implements OnModuleInit {
 					)
 					.lean()
 					.exec();
-				if (doctor) await this.memberService.closeAccount(doctor.memberId, session);
+				if (!doctor) return;
+				await this.memberService.closeAccount(doctor.memberId, session);
+				// The same transaction takes the doctor off every treatment of the clinic.
+				await this.treatmentService.detachDoctor(clinic._id, _id, session);
 			});
 		} finally {
 			await session.endSession();
@@ -206,6 +212,8 @@ export class DoctorService implements OnModuleInit {
 		if (!doctor) throw new NotFoundException(Messages.NO_DATA_FOUND);
 
 		await this.memberService.signOutEverywhere((doctor as T).memberId);
+		// A treatment hidden for lack of doctors may have been the cheapest one.
+		await this.treatmentService.refreshClinicSummary(clinic._id);
 		await this.invalidateDoctor(_id);
 		return doctor as Doctor;
 	}

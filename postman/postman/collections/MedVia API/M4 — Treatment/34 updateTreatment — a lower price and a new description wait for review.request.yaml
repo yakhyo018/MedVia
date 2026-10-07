@@ -1,0 +1,33 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation UpdateTreatment($input: TreatmentUpdate!) {
+        updateTreatment(input: $input) { _id treatmentStatus treatmentName treatmentPrice treatmentDuration treatmentDesc treatmentReviewNote doctorIds doctors { _id } treatmentDraft { treatmentPrice treatmentDesc treatmentName submittedAt } }
+      }
+    variables: |-
+      {
+        "input": { "treatmentId": "{{treatmentId}}", "treatmentPrice": 80000, "treatmentDesc": "Now with a skin check before every session." }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const t = gql.updateTreatment || {};
+      const d = t.treatmentDraft || {};
+      pm.test('live values unchanged', () => pm.expect([t.treatmentPrice, t.treatmentDesc]).to.eql([120000, 'Low-energy laser for even skin tone.']));
+      pm.test('draft holds the lower price and the new text', () => pm.expect([d.treatmentPrice, d.treatmentDesc]).to.eql([80000, 'Now with a skin check before every session.']));
+      pm.environment.set('draftSeen', d.submittedAt || '');
+    language: text/javascript
+order: 34000

@@ -19,7 +19,8 @@ import {
 	ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ClinicDecision, ClinicStatus, District, Specialty } from '../../enums/clinic.enum';
+import { ClinicStatus, District, Specialty } from '../../enums/clinic.enum';
+import { ReviewDecision } from '../../enums/admin.enum';
 import { Direction, Language } from '../../enums/common.enum';
 import { availableClinicSorts } from '../../config';
 import { PASSWORD_MAX, PASSWORD_MIN, PHONE_PATTERN } from '../member/member.input';
@@ -143,6 +144,19 @@ class CISearch {
 	@Field(() => [Language], { nullable: true })
 	langs?: Language[];
 
+	/** "Price range": clinics whose cheapest live treatment is within it (KRW). */
+	@IsOptional()
+	@IsInt()
+	@Min(0)
+	@Field(() => Int, { nullable: true })
+	priceMin?: number;
+
+	@IsOptional()
+	@IsInt()
+	@Min(0)
+	@Field(() => Int, { nullable: true })
+	priceMax?: number;
+
 	/** Only clinics with an interpreter — for one of `langs` when those are given. */
 	@IsOptional()
 	@IsBoolean()
@@ -211,9 +225,9 @@ export class ClinicReviewInput {
 	@Field(() => String)
 	clinicId!: string;
 
-	@IsEnum(ClinicDecision)
-	@Field(() => ClinicDecision)
-	decision!: ClinicDecision;
+	@IsEnum(ReviewDecision)
+	@Field(() => ReviewDecision)
+	decision!: ReviewDecision;
 
 	/** Required for REQUEST_CHANGES and REJECT — the clinic must know what to fix. */
 	@IsOptional()

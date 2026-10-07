@@ -79,6 +79,13 @@ export class Clinic {
 	@Field(() => String, { nullable: true })
 	clinicReviewNote?: string;
 
+	/** KRW; null while the clinic has no ACTIVE treatment. */
+	@Field(() => Int, { nullable: true })
+	clinicMinPrice?: number | null;
+
+	@Field(() => [String])
+	clinicTreatmentNames!: string[];
+
 	@Field(() => Int)
 	clinicLikes!: number;
 
