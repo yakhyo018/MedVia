@@ -10,6 +10,7 @@ import { TreatmentModule } from './treatment/treatment.module';
 import { ViewModule } from './view/view.module';
 import { BookingModule } from './booking/booking.module';
 import { ReviewModule } from './review/review.module';
+import { ChatModule } from './chat/chat.module';
 import { TestSupportModule, testSupportEnabled } from './test-support/test-support.module';
 
 @Module({
@@ -21,6 +22,7 @@ import { TestSupportModule, testSupportEnabled } from './test-support/test-suppo
 		TreatmentModule,
 		BookingModule,
 		ReviewModule,
+		ChatModule,
 		FollowModule,
 		ViewModule,
 		AuditLogModule,

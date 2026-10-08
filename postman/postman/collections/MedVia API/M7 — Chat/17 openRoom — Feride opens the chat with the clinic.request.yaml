@@ -3,13 +3,14 @@ url: '{{baseUrl}}/graphql'
 method: POST
 headers:
   Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
 body:
   type: graphql
   content:
     query: |-
-      mutation Signup($input: MemberInput!) { signup(input: $input) { accessToken } }
+      mutation O($id: String!) { openRoom(clinicId: $id) { _id roomLastAt unread lastText memberId clinicId clinicName patientName patientLang } }
     variables: |-
-      { "input": { "memberType": "USER", "memberEmail": "bpatient2.{{stamp}}@medvia.test", "memberPassword": "Patient#2026", "memberFullName": "Timur Alimov", "memberLang": "EN", "termsAccepted": true } }
+      { "id": "{{clinicId}}" }
 scripts:
   - type: afterResponse
     code: |-
@@ -19,6 +20,8 @@ scripts:
       const msg = err.message || '';
       const code = (err.extensions && err.extensions.code) || '';
       pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
-      pm.environment.set('patient2Token', (gql.signup || {}).accessToken || '');
+      const r = gql.openRoom || {};
+      pm.test('empty room with the clinic card', () => pm.expect([r.unread, r.lastText, r.clinicName]).to.eql([0, null, 'Chat Test Clinic ' + pm.environment.get('stamp')]));
+      pm.environment.set('roomId', r._id || '');
     language: text/javascript
-order: 6000
+order: 17000

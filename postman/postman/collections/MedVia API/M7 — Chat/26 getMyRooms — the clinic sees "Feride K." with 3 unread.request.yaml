@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query R { getMyRooms { _id roomLastAt unread lastText memberId clinicId clinicName patientName patientLang } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const r = (gql.getMyRooms || []).find((x) => x._id === pm.environment.get('roomId')) || {};
+      pm.test('3 unread, the last message', () => pm.expect([r.unread, r.lastText]).to.eql([3, "Спасибо!"]));
+      pm.test('short name and language', () => pm.expect([r.patientName, r.patientLang]).to.eql(['Feride K.', 'RU']));
+    language: text/javascript
+order: 26000

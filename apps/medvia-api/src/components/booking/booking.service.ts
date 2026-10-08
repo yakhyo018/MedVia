@@ -21,6 +21,7 @@ import { shapeIntoMongoObjectId } from '../../libs/config';
 import { decrypt, encrypt, parseKey } from '../../libs/utils/crypto.util';
 import { ClinicService } from '../clinic/clinic.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { ChatService } from '../chat/chat.service';
 import { SlotService } from './slot.service';
 import {
 	actorOf,
@@ -82,9 +83,11 @@ export class BookingService {
 	constructor(
 		@InjectModel('Booking') private readonly bookingModel: Model<T>,
 		@InjectModel('Doctor') private readonly doctorModel: Model<T>,
+		@InjectModel('Treatment') private readonly treatmentModel: Model<T>,
 		private readonly slotService: SlotService,
 		private readonly clinicService: ClinicService,
 		private readonly auditLogService: AuditLogService,
+		private readonly chatService: ChatService,
 	) {}
 
 	/* ───────────────────────── patient ───────────────────────── */
@@ -155,6 +158,13 @@ export class BookingService {
 				if ((err as T)?.code === 11000 && attempt < CODE_ATTEMPTS) continue;
 				throw err;
 			}
+			// The request opens the patient's room with the clinic and says so in it.
+			await this.chatService.postBookingLine(
+				created,
+				BookingStatus.PENDING,
+				BookingActor.PATIENT,
+				treatment.treatmentName,
+			);
 			return { ...created, bookingQuestionnaire: input.questionnaire } as unknown as Booking;
 		}
 	}
@@ -272,6 +282,18 @@ export class BookingService {
 			if (!updated) throw new BadRequestException(Messages.WRONG_STATUS);
 			await this.slotService.applyBookingEffect(updated, slotEffect(to), session);
 		});
+
+		const treatment = await this.treatmentModel
+			.findById(booking.treatmentId, { treatmentName: 1 })
+			.lean()
+			.exec();
+		await this.chatService.postBookingLine(
+			updated as unknown as T,
+			to,
+			actor,
+			treatment?.treatmentName ?? '',
+			reason,
+		);
 
 		if (actor === BookingActor.ADMIN) {
 			await this.auditLogService.record({

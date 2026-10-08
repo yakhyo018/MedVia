@@ -181,3 +181,20 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | `getReviews` (public, ACTIVE) and `getMyReviews` (patient, all statuses) separate. | Public and private data never share a resolver (M5 rule). | Two queries. | One scoped query. |
 | `devShiftBookingTime` in a TestSupportModule, imported only with `ENABLE_TEST_SUPPORT=true` and `NODE_ENV !== 'production'`. | COMPLETED needs a past visit; only the clock is faked, the rest is real. | Test code in the repository. | Seed script; Jest only. |
 | Cut: `reviewImages`, `moderatedAt`, `moderatorId` (audit log), automatic flagging. | Before/after photos are banned anyway; who/when is in the audit log. | — | ER model as drawn. |
+
+## M7 — Chat
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| Socket.IO (`@nestjs/websockets`, `@nestjs/platform-socket.io`); `socket.io-client` as a devDependency for the socket test. | Rooms, reconnect and handshake auth out of the box; Nestar's raw `ws` is not ported. | A client library on the frontend too. | SSE; GraphQL subscriptions (graphql-ws); polling. |
+| Messages are sent through a GraphQL mutation; the socket only pushes (`message:new`, `room:updated`). | One write path for validation, guards, throttling and Postman. Save first, push second. | Two transports to understand. | Socket events for sending. |
+| Socket.IO rooms are audiences (`member:<id>`, `clinic:<id>`), not conversations. | A new conversation needs no join; the whole clinic team is one room. | A clinic socket receives every conversation of the clinic. | One Socket.IO room per conversation. |
+| Handshake middleware verifies the access token (`TokenService.verifyToken`); the socket is cut at token expiry. | A long-lived socket must not outlive a revoked member. | Clients reconnect every 15 minutes. | Check the token on every emit; never cut. |
+| Chat is patient ↔ clinic account; doctors and admins do not write. | Mockup: "patient chat is handled by the clinic". | — | Doctors in the room. |
+| `roomLastMessageId` instead of a copied text; unread as two fields. | Each side reads the preview in its own language. | One lookup per room in the list. | `roomLastMessage` text. |
+| Cursor paging on `{ createdAt, _id }`, opaque base64url cursor. | Stable while new messages arrive. | No jump to page N. | skip/limit pages. |
+| Cut: `roomStatus`, `doctorId`, `bookingId` on the room, `messageFile`, `readAt`, DOCTOR/ADMIN senders. | No screen needs them; files need private storage. | — | ER model as drawn. |
+| Booking status changes post SYSTEM lines into the room; booking → chat only; never fails the booking. | The mockup shows them; the chat stays independent. | A lost line is only logged. | No lines; an event bus. |
+| `sendMessage` throttled 20/min per member (`ChatThrottlerGuard`). | Fair per person; an office IP is not one user. | — | Per-IP limit. |
+| No Redis adapter yet. | One API instance. | Must be added before scaling out. | `@socket.io/redis-adapter` now. |
+| Socket checks in `postman/socket.js` (`npm run test:socket`). | Newman cannot reach Socket.IO. | A second test runner. | Jest e2e with a running app. |

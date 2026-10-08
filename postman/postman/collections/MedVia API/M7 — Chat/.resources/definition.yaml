@@ -1,0 +1,3 @@
+$kind: collection
+description: Patient ↔ clinic chat over GraphQL. One room per patient and clinic (openRoom is idempotent, only for approved clinics); messages stored as written in the sender's language (patient's memberLang, the clinic in Korean); only the room's two sides read or write it, doctors not at all; history newest first with cursor paging; unread for the other side, reset by markRoomRead; booking requests open a room and booking status changes add SYSTEM lines. The socket push (and per-member flood control) is checked by npm run test:socket — Newman cannot reach Socket.IO. Self-contained. Needs ADMIN_EMAIL / ADMIN_PASSWORD and MEDICAL_ENC_KEY in .env.
+order: 8000

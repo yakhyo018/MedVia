@@ -1360,7 +1360,7 @@ A 60-minute treatment needs **two** slots (`ceil(60 / 30)`). If 10:00 is free an
 The race in detail: both transactions write the same slot document. MongoDB lets the first commit
 and gives the second a `WriteConflict`; `withTransaction` retries it automatically, the "free"
 filter no longer matches, `modifiedCount` is short, and the second patient gets
-"This time is no longer available". The Postman suite replays it: Feride holds 10:00, Timur's hold
+"This time is no longer available". The Postman suite replays it: Feride holds 10:00, Yahyo's hold
 on 10:30 (which overlaps) is refused.
 
 Why not Redis `SETNX`? The slot and the booking must change together. A lock in Redis and the
@@ -1420,7 +1420,7 @@ USER → { memberId }   AGENT → { clinicId of my clinic }   DOCTOR → { my do
 
 Input filters (`clinicId`, `doctorId`, status, tab) are **AND**ed onto it — they can only narrow.
 **IDOR** (Insecure Direct Object Reference) is the bug where an API trusts an id from the request:
-`getBookings(clinicId: "someone else's")` returns someone else's data. Here Timur passes the
+`getBookings(clinicId: "someone else's")` returns someone else's data. Here Yahyo passes the
 clinic's id and still sees only his own bookings — the Postman test was checked by removing the
 scope on purpose: it went red.
 
@@ -1640,3 +1640,122 @@ Fake only the clock: a test-support mutation moves a booking into the past, and 
 **6. A test passed when you broke the feature. Is the test useless?**
 
 It showed the state it guards cannot occur: an ACTIVE review never carries the admin's note, because approval clears it. The strip stays as defence in depth, and the finding is written down instead of pretending the test proves more than it does.
+
+---
+
+## M7 — Chat (Socket.IO)
+
+### 1. Why a chat needs push
+
+HTTP — and GraphQL over it — is request → response: the browser asks, the server answers. When
+the clinic replies to Feride, her browser has asked nothing, yet it must show the message now.
+
+| Way | How | Cost |
+| --- | --- | --- |
+| Polling | ask "anything new?" every 2 s | 99 % empty requests, up to 2 s late |
+| SSE | one HTTP response kept open, the server streams into it | server → client only |
+| WebSocket | one long-lived two-way connection | reconnect, groups and auth are yours to write |
+| Socket.IO | a library on top of WebSocket | a client library on the other side too |
+
+Socket.IO adds what a raw WebSocket lacks: automatic reconnect, **rooms** (`io.to('x').emit` reaches
+every socket in group x), auth data in the handshake, a long-polling fallback, and a Redis adapter
+when there is more than one server. Nestar's raw `ws` is exactly what CLAUDE.md says not to port.
+
+Honest note: MedVia pushes only server → client (messages are sent through GraphQL), so SSE or
+GraphQL subscriptions would also do. Socket.IO was chosen for rooms and reconnect out of the box,
+room for two-way features later ("typing…"), and because job postings ask for it.
+
+### 2. Write through GraphQL, push through the socket
+
+`sendMessage` is a GraphQL mutation, not a socket event. One write path means one place for the
+ValidationPipe, the role guard, the throttler and the Postman tests. The order matters: **save
+first, push second**. A message exists before anyone is told about it; a socket that is down only
+loses the push, and the next history read has the message.
+
+### 3. Rooms are audiences, not conversations
+
+A socket joins one Socket.IO room: `member:<id>` for a patient, `clinic:<id>` for the clinic account
+(every tab of the team). A chat room's events go to `[member:<patient>, clinic:<clinic>]`. The
+alternative — one Socket.IO room per conversation — needs every socket to join every new
+conversation as it appears; with audiences a new conversation needs no join at all, and the clinic
+gets all of them through one room.
+
+### 4. Socket auth: once in the handshake, cut at expiry
+
+The access token travels in `handshake.auth.token` and is checked in a handshake **middleware** —
+a refused socket never connects; the client gets `connect_error` with the reason. `TokenService`
+got a `verifyToken(token)` shared with the HTTP guards (signature, expiry, Redis revocation).
+
+A WebSocket lives for hours, a token 15 minutes. Without more, a member blocked at minute 5 keeps
+receiving messages on the open socket. So the server **cuts the socket when its token expires**;
+the client refreshes through the cookie and reconnects, and a revoked member cannot. (Checked by
+reasoning, not by a test — the suite would have to wait 15 minutes.)
+
+### 5. Cursor paging, not page numbers
+
+New messages keep arriving at the top. With `skip`, "page 2" shifts under the reader the moment a
+message arrives — one message is shown twice or skipped. The cursor is the position of the oldest
+message already shown, `{ createdAt, _id }` (the id breaks ties inside one millisecond), base64url
+so the client treats it as opaque. The next page is "strictly older than the cursor", served by the
+`{ roomId, createdAt, _id }` index; one extra row is read to know whether another page exists.
+
+### 6. One message, two languages, one preview
+
+A message keeps `messageText` in `messageLang` as written, plus `messageTranslations[]` (AI-1).
+Each side reads `textFor(message, viewerLang)`: the original if it is in their language, else the
+translation, else the original. That is also why the room stores `roomLastMessageId`, not a copy of
+the last text: the patient's list needs it in Russian, the clinic's in Korean, and the message
+holds both.
+
+`roomUnreadPatient` / `roomUnreadClinic` are state, not counters that must stay in step with
+anything: `$inc` on each message from the other side, `0` on `markRoomRead`.
+
+### 7. Bookings write into the chat — one way
+
+`createBooking` opens the patient's room with the clinic and adds "Booking request · Glow Facial ·
+2026-10-11 10:00 KST"; confirm, decline, cancel, complete and no-show add their own line. The
+booking module imports the chat module, never the reverse. The line is posted **after** the
+booking committed and can never fail it — a lost line is logged, the booking stands.
+
+### 8. Flood control per member
+
+`sendMessage` is limited to 20 a minute. The existing login throttler counts per IP + email;
+for a chat that would put a whole clinic team behind one office IP under one limit. The chat guard
+counts per member, and the socket test proves Yahyo's limit does not touch Feride.
+
+### 9. What the tests proved
+
+| Broken on purpose | Caught by |
+| --- | --- |
+| a patient = a clinic side | Jest `sideOf` |
+| wrong unread field | Jest `otherUnread`; Postman "3 unread", "1 unread" |
+| paging forgets the tie-break | Jest `olderThan` |
+| the room scope removed | Postman "Yahyo cannot write / read in Feride's room" |
+| events emitted to everyone | socket test "Yahyo receives nothing" |
+| no auth in the handshake | socket test "a socket without a token is refused" |
+
+### Interview questions and answers
+
+**1. Why did you send messages through GraphQL instead of the socket?**
+
+One write path: validation, role guards, throttling and the Postman tests apply as for every other mutation. The socket only pushes. The message is saved before the push, so a lost push is repaired by the next history read.
+
+**2. How do you authenticate a WebSocket, and what happens when the token expires?**
+
+The access token goes in the handshake and is verified in middleware — a refused socket never connects. Because the connection outlives the 15-minute token, the server disconnects the socket at the token's expiry; the client refreshes and reconnects, which a blocked member cannot.
+
+**3. Why cursor pagination for chat history?**
+
+New messages are inserted at the top; offset paging shifts and repeats or skips messages. A cursor on `{ createdAt, _id }` asks for "older than this one", is stable under inserts and uses the index.
+
+**4. How would this run on three API servers?**
+
+A socket is connected to one server, but the message may be saved on another. The Socket.IO Redis adapter publishes every emit through Redis so each server delivers it to its own sockets. With audiences as rooms nothing else changes. MedVia runs one instance, so it is noted, not installed.
+
+**5. A clinic team works in five tabs. How does each tab get the message once?**
+
+All five sockets join `clinic:<id>`; one emit to that room reaches each socket once. Emitting to `[member:<patient>, clinic:<clinic>]` also delivers once per socket even if a socket were in both.
+
+**6. Why is the last message a reference and not a copy?**
+
+The two sides read it in different languages. A copy would need both languages duplicated on the room and updated when the translation arrives; a reference reads the message, which already holds both.

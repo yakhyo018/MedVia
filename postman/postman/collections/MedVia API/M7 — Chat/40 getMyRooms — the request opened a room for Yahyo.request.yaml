@@ -3,13 +3,12 @@ url: '{{baseUrl}}/graphql'
 method: POST
 headers:
   Content-Type: application/json
+  Authorization: Bearer {{patient2Token}}
 body:
   type: graphql
   content:
     query: |-
-      mutation Signup($input: MemberInput!) { signup(input: $input) { accessToken } }
-    variables: |-
-      { "input": { "memberType": "USER", "memberEmail": "rpatient2.{{stamp}}@medvia.test", "memberPassword": "Patient#2026", "memberFullName": "Timur Alimov", "memberLang": "EN", "termsAccepted": true } }
+      query R { getMyRooms { _id roomLastAt unread lastText memberId clinicId clinicName patientName patientLang } }
 scripts:
   - type: afterResponse
     code: |-
@@ -19,6 +18,9 @@ scripts:
       const msg = err.message || '';
       const code = (err.extensions && err.extensions.code) || '';
       pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
-      pm.environment.set('patient2Token', (gql.signup || {}).accessToken || '');
+      const r = (gql.getMyRooms || [])[0] || {};
+      pm.environment.set('yahyoRoomId', r._id || '');
+      const line = 'Booking request · ' + pm.environment.get('cTreatmentName') + ' · ' + pm.environment.get('slotDate') + ' 10:00 KST';
+      pm.test('the request line, nothing unread for Yahyo', () => pm.expect([r.lastText, r.unread]).to.eql([line, 0]));
     language: text/javascript
-order: 7000
+order: 40000
