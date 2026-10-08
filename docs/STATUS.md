@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-07 — M6 merged into `develop` and pushed._
+_Last updated: 2026-10-08 — M7 (chat, phase A) built on `feature/chat`, waiting for the user's run._
 
 ## The project
 
@@ -30,35 +30,35 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M4.1 | Unit tests — Jest for the rule-heavy code (39 tests) | ✅ done, merged (`2dc3b3e`) |
 | M5 | Slot + Booking — atomic hold, transactions, state machine, consent | ✅ done, merged (`eb82b79`) |
 | M6 | Review — only after a COMPLETED booking | ✅ done, merged (`7839c2e`) |
-| **M7** | **Chat — socket.io rooms** | **next (with AI-1)** |
+| **M7** | **Chat — socket.io rooms** | **built, Postman + socket run by the user pending** |
 | AI-1 | Translator — questionnaire KO summary, chat / review / clinic-text translation (with M7) | |
 | M8 | Community + CS + Notification | |
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
 | AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
 
-## Next step: M7 — Chat (with AI-1 Translator), start with the collection review
+## Next step: the user runs M7, then merge; then AI-1 (phase B)
 
-Bring these into the review:
+M7 is built on `feature/chat` (not committed yet). Left: the user runs `npm run test:api -- M7`
+and `npm run test:socket`, then commit and merge `feature/chat` into `develop`.
 
-- Who is in a room: the ER model has one room per `{memberId, clinicId}` (patient ↔ clinic);
-  `doctorId` is context only, and the doctor panel says "patient chat is handled by the clinic".
-  `SenderType` has DOCTOR — decide whether a doctor writes in the chat or not.
-- Patient writes in any of the 6 `Language` values ("Write in any language…"), the clinic in
-  Korean; every message keeps the original (`messageText`, `messageLang`) and
-  `messageTranslations[]`; "Show original" on both sides. Translation is AI-1 — decide what a
-  message looks like before it is translated (sent at once, translation arrives over the socket).
-- AI-1 scope agreed earlier (DECISIONS "AI — scope"): `components/ai` with `ai.service` as the only
-  door; health data only with the `AI_SUMMARY` consent, pseudonymised; AI never on the critical
-  path; Redis cache `ai:translation:<sha256>` with a TTL; a new package needs its reason stated.
-- Socket.IO auth with the access token (15 min) — what happens when it expires mid-connection.
-- Unread counters (`roomUnreadPatient`, `roomUnreadClinic`) vs `readAt` on messages.
-- Files in chat (`messageFile`, private storage) — likely cut, like questionnaire photos.
+Then **AI-1 — Translator** on `feature/ai` (plan agreed 2026-10-08, see DECISIONS "AI — scope"):
+- `components/ai`, `ai.service` the only door; `AiProvider` with `openrouter` (fetch, best free model
+  for the demo — data is synthetic), `anthropic` (`@anthropic-ai/sdk`, marked unverified until a
+  Console key exists) and `fake` (tests). `AI_PROVIDER=openrouter|fake` refuses to boot in production.
+- Env: `AI_PROVIDER` (default fake), `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `AI_MODEL_TRANSLATE`,
+  `AI_MODEL_SUMMARY`. Models: chat → `claude-haiku-4-5`, questionnaire summary → `claude-opus-5-5`
+  on the anthropic provider; the free OpenRouter model is picked with an `eval:translate` script.
+- Chat: messages saved PENDING, translated in the background, `message:translated` pushed; FAILED
+  retried on history read; Redis cache `ai:translation:<sha256>`. Member AI consent
+  (`memberAiConsentAt` + version) required for translation.
+- Booking: optional `AI_SUMMARY` consent; encrypted Korean summary for the clinic and the doctor.
+- Add `sk-or-` and `sk-ant-` to the secret scan in CLAUDE.md.
 
 ## Session handoff — where the last session stopped
 
 - `develop` is pushed and clean; `main` is still M0 (on purpose, see Open items). No feature
-  branches are left; the next milestone starts with `git checkout -b feature/chat develop`.
+  branches are left except `feature/chat` (M7, until it is merged).
 - Work only in `~/Desktop/MedVia` — never in a git worktree. If the desktop app starts a session
   inside `.claude/worktrees/…`, its hook blocks the Write tool on the main folder; open the session
   in `~/Desktop/MedVia` instead.
@@ -68,7 +68,8 @@ Bring these into the review:
 - Atlas Search: index `clinic_search` exists and is READY, with `clinicName`, `clinicNameKo`,
   `clinicDesc` and `clinicTreatmentNames` mapped; `.env` has `ATLAS_SEARCH_INDEX=clinic_search`.
   New mapped fields must be added by the user in Compass (Indexes → Search Indexes → Edit).
-- Last full runs (2026-10-07, M6 branch): Newman M0–M6 green (791 assertions), Jest 110/110,
+- Last full runs (2026-10-08, M7 branch): Newman M0–M7 green (865 assertions), Jest 128/128,
+  `npm run test:socket` 11/11,
   `npm run typecheck`, `lint:check`, `build` clean.
 - Merge routine the user expects after "commit qilib develop'ga merge qil": stage by name, read the
   diff, secret scan → commit → `git merge --no-ff` into `develop` → close the milestone here →
@@ -134,6 +135,7 @@ npm run start:dev              # API on :3000 (Atlas + local Redis via brew)
 npm run seed:admin             # once; needs ADMIN_EMAIL / ADMIN_PASSWORD in .env
 npm run test:api               # all Postman folders (needs the API running)
 npm run test:api -- M1         # one milestone
+npm run test:socket            # the chat socket end to end (needs the API running)
 npm test                       # Jest unit tests (no API, no database needed)
 npm run typecheck && npm run lint:check && npm run build
 ```

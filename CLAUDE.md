@@ -120,6 +120,7 @@ npm run build
 npm run lint:check
 npm test                # Jest unit tests — no API or database needed
 npm run test:api        # needs the API running: npm run start:dev
+npm run test:socket     # the chat socket (Newman cannot reach Socket.IO); API running
 ```
 
 There is no `npm run lint` script on purpose. The Nestar version carried `--fix` and rewrote
