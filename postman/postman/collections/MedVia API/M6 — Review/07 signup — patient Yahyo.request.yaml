@@ -9,7 +9,7 @@ body:
     query: |-
       mutation Signup($input: MemberInput!) { signup(input: $input) { accessToken } }
     variables: |-
-      { "input": { "memberType": "USER", "memberEmail": "rpatient2.{{stamp}}@medvia.test", "memberPassword": "Patient#2026", "memberFullName": "Timur Alimov", "memberLang": "EN", "termsAccepted": true } }
+      { "input": { "memberType": "USER", "memberEmail": "rpatient2.{{stamp}}@medvia.test", "memberPassword": "Patient#2026", "memberFullName": "Yahyo Choriyev", "memberLang": "EN", "termsAccepted": true } }
 scripts:
   - type: afterResponse
     code: |-
