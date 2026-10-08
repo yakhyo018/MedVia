@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-08 — M7 (chat, phase A) built on `feature/chat`, waiting for the user's run._
+_Last updated: 2026-10-08 — M7 merged into `develop` and pushed; AI-1 is next._
 
 ## The project
 
@@ -11,7 +11,7 @@ MedVia — portfolio project for Korean healthtech job applications. Foreign pat
 find verified Seoul clinics and book treatments in their own language. Not a business: no SMS, no
 outgoing email, no payments, no HIRA. The sample patient persona is **Feride Karimova**.
 
-- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M6
+- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M7
 - Design and data model: `~/Desktop/MedVia-design` — ER source `er/model.js`, mockup generators `source/`
 - ER model (24 collections): https://claude.ai/artifact/LiWJjgdBPcaLSjdGkefKcA
 - Clickable prototype (61 screens): https://claude.ai/artifact/Js6b1j85jbvBrxCSpNRiWt
@@ -30,19 +30,16 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M4.1 | Unit tests — Jest for the rule-heavy code (39 tests) | ✅ done, merged (`2dc3b3e`) |
 | M5 | Slot + Booking — atomic hold, transactions, state machine, consent | ✅ done, merged (`eb82b79`) |
 | M6 | Review — only after a COMPLETED booking | ✅ done, merged (`7839c2e`) |
-| **M7** | **Chat — socket.io rooms** | **built, Postman + socket run by the user pending** |
-| AI-1 | Translator — questionnaire KO summary, chat / review / clinic-text translation (with M7) | |
+| M7 | Chat — socket.io rooms | ✅ done, merged (`9fb3323`) |
+| **AI-1** | **Translator — chat translation + questionnaire KO summary** | **next** |
 | M8 | Community + CS + Notification | |
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
 | AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
 
-## Next step: the user runs M7, then merge; then AI-1 (phase B)
+## Next step: AI-1 — Translator (phase B of M7), on `feature/ai`
 
-M7 is built on `feature/chat` (not committed yet). Left: the user runs `npm run test:api -- M7`
-and `npm run test:socket`, then commit and merge `feature/chat` into `develop`.
-
-Then **AI-1 — Translator** on `feature/ai` (plan agreed 2026-10-08, see DECISIONS "AI — scope"):
+**AI-1 — Translator** on `feature/ai` (plan agreed 2026-10-08, see DECISIONS "AI — scope"):
 - `components/ai`, `ai.service` the only door; `AiProvider` with `openrouter` (fetch, best free model
   for the demo — data is synthetic), `anthropic` (`@anthropic-ai/sdk`, marked unverified until a
   Console key exists) and `fake` (tests). `AI_PROVIDER=openrouter|fake` refuses to boot in production.
@@ -58,7 +55,7 @@ Then **AI-1 — Translator** on `feature/ai` (plan agreed 2026-10-08, see DECISI
 ## Session handoff — where the last session stopped
 
 - `develop` is pushed and clean; `main` is still M0 (on purpose, see Open items). No feature
-  branches are left except `feature/chat` (M7, until it is merged).
+  branches are left; AI-1 starts with `git checkout -b feature/ai develop`.
 - Work only in `~/Desktop/MedVia` — never in a git worktree. If the desktop app starts a session
   inside `.claude/worktrees/…`, its hook blocks the Write tool on the main folder; open the session
   in `~/Desktop/MedVia` instead.
