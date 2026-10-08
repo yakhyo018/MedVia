@@ -1,0 +1,118 @@
+import { Types } from 'mongoose';
+import { BookingActor, BookingStatus } from '../../libs/enums/booking.enum';
+import { SenderType } from '../../libs/enums/chat.enum';
+import { Language } from '../../libs/enums/common.enum';
+import { MemberType } from '../../libs/enums/member.enum';
+import {
+	bookingLine,
+	decodeCursor,
+	encodeCursor,
+	olderThan,
+	otherUnread,
+	roomScope,
+	sideOf,
+	targetLang,
+	textFor,
+	unreadForLine,
+	unreadOf,
+	viewerLang,
+} from './chat.rules';
+
+describe('sides', () => {
+	it('a patient and a clinic account are the two sides', () => {
+		expect(sideOf(MemberType.USER)).toBe(SenderType.PATIENT);
+		expect(sideOf(MemberType.AGENT)).toBe(SenderType.CLINIC);
+	});
+
+	it.each([MemberType.DOCTOR, MemberType.ADMIN])('a %s is neither', (type) => {
+		expect(() => sideOf(type)).toThrow('Allowed only for members with specific roles!');
+	});
+
+	it('scopes rooms from the token', () => {
+		const ids = { memberId: 'm', clinicId: 'c' };
+		expect(roomScope(SenderType.PATIENT, ids)).toEqual({ memberId: 'm' });
+		expect(roomScope(SenderType.CLINIC, ids)).toEqual({ clinicId: 'c' });
+	});
+
+	it("a message is unread for the other side, read resets one's own", () => {
+		expect(otherUnread(SenderType.PATIENT)).toBe('roomUnreadClinic');
+		expect(otherUnread(SenderType.CLINIC)).toBe('roomUnreadPatient');
+		expect(unreadOf(SenderType.PATIENT)).toBe('roomUnreadPatient');
+	});
+});
+
+describe('languages', () => {
+	it('the clinic reads Korean, the patient their own language', () => {
+		expect(viewerLang(SenderType.CLINIC, Language.RU)).toBe(Language.KO);
+		expect(viewerLang(SenderType.PATIENT, Language.RU)).toBe(Language.RU);
+	});
+
+	it("a message is translated into the other side's language", () => {
+		expect(targetLang(SenderType.PATIENT, Language.UZ)).toBe(Language.KO);
+		expect(targetLang(SenderType.CLINIC, Language.UZ)).toBe(Language.UZ);
+	});
+
+	const message = {
+		messageText: 'Здравствуйте!',
+		messageLang: Language.RU,
+		messageTranslations: [{ lang: Language.KO, text: '안녕하세요!' }],
+	};
+
+	it('shows the original to the writer and the translation to the reader', () => {
+		expect(textFor(message, Language.RU)).toBe('Здравствуйте!');
+		expect(textFor(message, Language.KO)).toBe('안녕하세요!');
+	});
+
+	it('falls back to the original while there is no translation', () => {
+		expect(textFor({ ...message, messageTranslations: [] }, Language.KO)).toBe('Здравствуйте!');
+	});
+});
+
+describe('cursor', () => {
+	const createdAt = new Date('2026-10-08T05:00:00.123Z');
+	const _id = new Types.ObjectId();
+
+	it('round-trips the position of a message', () => {
+		expect(decodeCursor(encodeCursor({ createdAt, _id }))).toEqual({ createdAt, _id });
+	});
+
+	it.each(['', 'not-a-cursor', Buffer.from('2026|abc').toString('base64url')])(
+		'refuses %p',
+		(cursor) => {
+			expect(() => decodeCursor(cursor)).toThrow();
+		},
+	);
+
+	it('takes older messages, and in the same millisecond the smaller id', () => {
+		expect(olderThan({ createdAt, _id })).toEqual({
+			$or: [{ createdAt: { $lt: createdAt } }, { createdAt, _id: { $lt: _id } }],
+		});
+	});
+});
+
+describe('bookingLine', () => {
+	// 05:00 UTC is 14:00 in Seoul.
+	const date = new Date('2026-09-22T05:00:00Z');
+
+	it('writes the status, the treatment and the Seoul time', () => {
+		expect(bookingLine(BookingStatus.CONFIRMED, 'Laser Toning', date)).toBe(
+			'Booking confirmed · Laser Toning · 2026-09-22 14:00 KST',
+		);
+	});
+
+	it('adds the reason of a decline', () => {
+		expect(bookingLine(BookingStatus.DECLINED, 'Laser Toning', date, 'Doctor away')).toBe(
+			'Booking declined · Laser Toning · 2026-09-22 14:00 KST — Doctor away',
+		);
+	});
+
+	it('has no line for an expiry nobody wrote', () => {
+		expect(bookingLine(BookingStatus.EXPIRED, 'Laser Toning', date)).toBeNull();
+	});
+
+	it('is unread for whoever did not cause it', () => {
+		expect(unreadForLine(BookingActor.PATIENT)).toEqual(['roomUnreadClinic']);
+		expect(unreadForLine(BookingActor.CLINIC)).toEqual(['roomUnreadPatient']);
+		expect(unreadForLine(BookingActor.ADMIN)).toEqual(['roomUnreadPatient', 'roomUnreadClinic']);
+	});
+});

@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patient2Token}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation CB($input: BookingCreateInput!) { createBooking(input: $input) { _id } }
+    variables: |-
+      { "input": { "treatmentId": "{{treatmentId}}", "doctorId": "{{doctorAId}}", "slotStart": "{{t1000}}", "bookingLang": "EN", "questionnaire": { "originalLang": "EN", "answers": [ { "question": "Concern", "answer": "Dry skin" } ] }, "consents": [ { "consentType": "SHARE_DATA", "agreed": true }, { "consentType": "BOOKING_TERMS", "agreed": true } ] } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.environment.set('bookingId', (gql.createBooking || {})._id || '');
+    language: text/javascript
+order: 39000

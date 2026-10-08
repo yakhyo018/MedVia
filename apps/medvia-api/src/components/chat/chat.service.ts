@@ -1,0 +1,300 @@
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, ObjectId, Types } from 'mongoose';
+import { ChatMessage, ChatMessages, ChatRoom } from '../../libs/dto/chat/chat';
+import { MessageSendInput, RoomMessagesInquiry } from '../../libs/dto/chat/chat.input';
+import { BookingActor, BookingStatus } from '../../libs/enums/booking.enum';
+import { MessageType, SenderType, TranslationStatus } from '../../libs/enums/chat.enum';
+import { Language, Messages } from '../../libs/enums/common.enum';
+import { AuthMember, T } from '../../libs/types/common';
+import { shapeIntoMongoObjectId, toDisplayName } from '../../libs/config';
+import { ClinicService } from '../clinic/clinic.service';
+import { ChatGateway } from './chat.gateway';
+import {
+	bookingLine,
+	decodeCursor,
+	encodeCursor,
+	olderThan,
+	otherUnread,
+	roomScope,
+	sideOf,
+	textFor,
+	unreadForLine,
+	unreadOf,
+	viewerLang,
+} from './chat.rules';
+
+const ROOMS_MAX = 100;
+
+interface Viewer {
+	side: SenderType;
+	scope: T;
+	memberId: ObjectId;
+}
+
+@Injectable()
+export class ChatService {
+	private readonly logger = new Logger(ChatService.name);
+
+	constructor(
+		@InjectModel('ChatRoom') private readonly roomModel: Model<T>,
+		@InjectModel('ChatMessage') private readonly messageModel: Model<T>,
+		@InjectModel('Member') private readonly memberModel: Model<T>,
+		private readonly clinicService: ClinicService,
+		private readonly gateway: ChatGateway,
+	) {}
+
+	/* ───────────────────────── patient ───────────────────────── */
+
+	/**
+	 * "Chat with the clinic" on a clinic page: the room of this patient and clinic, created on
+	 * first use. An upsert on the unique {memberId, clinicId} index, so two clicks give one room.
+	 */
+	public async openRoom(memberId: ObjectId, clinicId: string): Promise<ChatRoom> {
+		const clinic = await this.clinicService.findActiveClinic(this.toObjectId(clinicId));
+		if (!clinic) throw new NotFoundException(Messages.NO_DATA_FOUND);
+		const room = await this.upsertRoom(memberId, clinic._id);
+		const [view] = await this.roomsFor(SenderType.PATIENT, { _id: room._id });
+		return view;
+	}
+
+	/* ───────────────────────── both sides ───────────────────────── */
+
+	/** "Consultation Chat" for a patient, "Consultations" for a clinic — scoped by the token. */
+	public async getMyRooms(authMember: AuthMember): Promise<ChatRoom[]> {
+		const viewer = await this.viewerOf(authMember);
+		return await this.roomsFor(viewer.side, viewer.scope);
+	}
+
+	/**
+	 * One page of a room's history, newest first. The cursor is the position of the oldest
+	 * message already shown; one extra row is read to know whether there is another page.
+	 */
+	public async getRoomMessages(
+		authMember: AuthMember,
+		input: RoomMessagesInquiry,
+	): Promise<ChatMessages> {
+		const viewer = await this.viewerOf(authMember);
+		const room = await this.findRoom(viewer, input.roomId);
+
+		const match: T = { roomId: room._id };
+		if (input.before) Object.assign(match, olderThan(decodeCursor(input.before)));
+		const rows = await this.messageModel
+			.find(match)
+			.sort({ createdAt: -1, _id: -1 })
+			.limit(input.limit + 1)
+			.lean()
+			.exec();
+
+		const page = rows.slice(0, input.limit);
+		const lang = viewerLang(viewer.side, await this.patientLang(room.memberId));
+		return {
+			list: page.map((m) => this.present(m, lang)),
+			nextCursor: rows.length > input.limit ? encodeCursor(page[page.length - 1] as never) : null,
+		};
+	}
+
+	/**
+	 * Saved first, pushed second: the message exists before anyone is told about it, and a
+	 * socket that is down loses only the push — the next history read has the message.
+	 * Written in the sender's language; AI-1 adds the translation for the other side later.
+	 */
+	public async sendMessage(authMember: AuthMember, input: MessageSendInput): Promise<ChatMessage> {
+		const viewer = await this.viewerOf(authMember);
+		const room = await this.findRoom(viewer, input.roomId);
+		const text = input.messageText.trim();
+		if (!text) throw new BadRequestException(Messages.BAD_REQUEST);
+
+		const messageLang =
+			viewer.side === SenderType.PATIENT ? await this.patientLang(room.memberId) : Language.KO;
+		const message = await this.messageModel.create({
+			messageType: MessageType.TEXT,
+			senderType: viewer.side,
+			messageText: text,
+			messageLang,
+			messageTranslationStatus: TranslationStatus.SKIPPED,
+			roomId: room._id,
+			senderId: authMember._id,
+		});
+		await this.touchRoom(room, message, [otherUnread(viewer.side)]);
+
+		const plain = message.toObject();
+		this.gateway.emitMessage(room, 'message:new', plain);
+		return this.present(plain, messageLang);
+	}
+
+	/** The viewer opened the room: their unread count goes to 0 on both their screens. */
+	public async markRoomRead(authMember: AuthMember, roomId: string): Promise<ChatRoom> {
+		const viewer = await this.viewerOf(authMember);
+		const room = await this.findRoom(viewer, roomId);
+		const updated = await this.roomModel
+			.findByIdAndUpdate(room._id, { $set: { [unreadOf(viewer.side)]: 0 } }, { new: true })
+			.lean()
+			.exec();
+		this.gateway.emitMessage(room, 'room:updated', updated);
+		const [view] = await this.roomsFor(viewer.side, { _id: room._id });
+		return view;
+	}
+
+	/* ───────────────────────── called by the booking module ───────────────────────── */
+
+	/**
+	 * "Booking confirmed · Laser Toning · 2026-09-22 14:00 KST" in the patient's room with the
+	 * clinic, opening the room on the first request. Called after the booking committed, and
+	 * never fails the booking: a lost line is logged, the booking stands.
+	 */
+	public async postBookingLine(
+		booking: T,
+		status: BookingStatus,
+		actor: BookingActor,
+		treatmentName: string,
+		reason?: string,
+	): Promise<void> {
+		const text = bookingLine(status, treatmentName, booking.bookingDate, reason);
+		if (!text) return;
+		try {
+			const room = await this.upsertRoom(booking.memberId, booking.clinicId);
+			const message = await this.messageModel.create({
+				messageType: MessageType.SYSTEM,
+				senderType: SenderType.SYSTEM,
+				messageText: text,
+				messageLang: Language.EN,
+				messageTranslationStatus: TranslationStatus.SKIPPED,
+				roomId: room._id,
+			});
+			await this.touchRoom(room, message, unreadForLine(actor));
+			this.gateway.emitMessage(room, 'message:new', message.toObject());
+		} catch (err: any) {
+			this.logger.warn(`booking line for ${String(booking._id)} not posted: ${err.message}`);
+		}
+	}
+
+	/* ───────────────────────── helpers ───────────────────────── */
+
+	private async upsertRoom(memberId: unknown, clinicId: unknown): Promise<T> {
+		try {
+			return (await this.roomModel
+				.findOneAndUpdate(
+					{ memberId, clinicId },
+					{ $setOnInsert: { memberId, clinicId, roomLastAt: new Date() } },
+					{ upsert: true, new: true },
+				)
+				.lean()
+				.exec()) as T;
+		} catch (err: any) {
+			// Two first messages at once: both upserts insert, the unique index keeps one.
+			if (err?.code !== 11000) throw err;
+			return (await this.roomModel.findOne({ memberId, clinicId }).lean().exec()) as T;
+		}
+	}
+
+	/** The last message, the time that orders the lists, and "unread" for the other side. */
+	private async touchRoom(room: T, message: T, unread: string[]): Promise<void> {
+		const updated = await this.roomModel
+			.findByIdAndUpdate(
+				room._id,
+				{
+					$set: { roomLastMessageId: message._id, roomLastAt: message.createdAt },
+					$inc: Object.fromEntries(unread.map((field) => [field, 1])),
+				},
+				{ new: true },
+			)
+			.lean()
+			.exec();
+		this.gateway.emitMessage(room, 'room:updated', updated);
+	}
+
+	/** Rooms of one side with their last message, clinic card and patient name, newest first. */
+	private async roomsFor(side: SenderType, match: T): Promise<ChatRoom[]> {
+		const rooms = await this.roomModel
+			.aggregate([
+				{ $match: match },
+				{ $sort: { roomLastAt: -1, _id: -1 } },
+				{ $limit: ROOMS_MAX },
+				{
+					$lookup: {
+						from: 'chatMessages',
+						localField: 'roomLastMessageId',
+						foreignField: '_id',
+						as: 'last',
+					},
+				},
+				{
+					$lookup: {
+						from: 'clinics',
+						localField: 'clinicId',
+						foreignField: '_id',
+						pipeline: [{ $project: { clinicName: 1, clinicLogo: 1 } }],
+						as: 'clinic',
+					},
+				},
+				{
+					$lookup: {
+						from: 'members',
+						localField: 'memberId',
+						foreignField: '_id',
+						pipeline: [{ $project: { memberFullName: 1, memberLang: 1 } }],
+						as: 'patient',
+					},
+				},
+			])
+			.exec();
+
+		return rooms.map((room: T) => {
+			const patient = room.patient[0] ?? {};
+			const last = room.last[0];
+			return {
+				_id: room._id,
+				roomLastAt: room.roomLastAt,
+				unread: room[unreadOf(side)] ?? 0,
+				lastText: last ? textFor(last, viewerLang(side, patient.memberLang)) : null,
+				memberId: room.memberId,
+				clinicId: room.clinicId,
+				clinicName: room.clinic[0]?.clinicName,
+				clinicLogo: room.clinic[0]?.clinicLogo,
+				patientName: toDisplayName(patient.memberFullName ?? '', true),
+				patientLang: patient.memberLang,
+			} as ChatRoom;
+		});
+	}
+
+	/** The side and the room scope of the token's member. */
+	private async viewerOf(authMember: AuthMember): Promise<Viewer> {
+		const side = sideOf(authMember.memberType);
+		let clinicId: unknown;
+		if (side === SenderType.CLINIC) {
+			const clinic = await this.clinicService.findClinicByMember(authMember._id);
+			if (!clinic) throw new NotFoundException(Messages.NO_DATA_FOUND);
+			clinicId = clinic._id;
+		}
+		return {
+			side,
+			scope: roomScope(side, { memberId: authMember._id, clinicId }),
+			memberId: authMember._id,
+		};
+	}
+
+	/** A room of the viewer; anyone else's room is "not found" — no hint that the id exists. */
+	private async findRoom(viewer: Viewer, roomId: string): Promise<T> {
+		const room = await this.roomModel
+			.findOne({ _id: this.toObjectId(roomId), ...viewer.scope })
+			.lean()
+			.exec();
+		if (!room) throw new NotFoundException(Messages.NO_DATA_FOUND);
+		return room;
+	}
+
+	private async patientLang(memberId: unknown): Promise<Language> {
+		const member = await this.memberModel.findById(memberId, { memberLang: 1 }).lean().exec();
+		return (member?.memberLang as Language) ?? Language.EN;
+	}
+
+	private present(message: T, lang: Language): ChatMessage {
+		return { ...message, displayText: textFor(message, lang) } as ChatMessage;
+	}
+
+	private toObjectId(id: string): ObjectId {
+		if (!Types.ObjectId.isValid(id)) throw new NotFoundException(Messages.NO_DATA_FOUND);
+		return shapeIntoMongoObjectId(id) as ObjectId;
+	}
+}

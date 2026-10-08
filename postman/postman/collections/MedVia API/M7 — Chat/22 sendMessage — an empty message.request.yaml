@@ -1,0 +1,24 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation S($input: MessageSendInput!) { sendMessage(input: $input) { _id messageType senderType messageText messageLang messageTranslationStatus displayText roomId senderId createdAt } }
+    variables: |-
+      { "input": { "roomId": "{{roomId}}", "messageText": "" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test("refused: messageText must be longer than or equal to 1 characters", () => pm.expect(msg).to.include("messageText must be longer than or equal to 1 characters"));
+    language: text/javascript
+order: 22000

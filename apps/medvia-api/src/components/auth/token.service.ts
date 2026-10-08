@@ -45,7 +45,14 @@ export class TokenService {
 
 		const [scheme, token] = header.split(' ');
 		if (scheme !== 'Bearer' || !token) throw new UnauthorizedException(Messages.NOT_AUTHENTICATED);
+		return await this.verifyToken(token);
+	}
 
+	/**
+	 * The token itself: signature, expiry, revocation. Shared by the HTTP guards (through
+	 * authenticate) and the chat socket, whose token arrives in the handshake, not in a header.
+	 */
+	public async verifyToken(token: string): Promise<AuthMember> {
 		let payload: T;
 		try {
 			payload = await this.jwtService.verifyAsync(token);

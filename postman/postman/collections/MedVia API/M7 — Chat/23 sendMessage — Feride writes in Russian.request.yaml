@@ -1,0 +1,27 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation S($input: MessageSendInput!) { sendMessage(input: $input) { _id messageType senderType messageText messageLang messageTranslationStatus displayText roomId senderId createdAt } }
+    variables: |-
+      { "input": { "roomId": "{{roomId}}", "messageText": "Здравствуйте! Можно записаться на завтра?" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const m = gql.sendMessage || {};
+      pm.test('stored as written, in her language', () => pm.expect([m.senderType, m.messageLang, m.messageText, m.displayText]).to.eql(['PATIENT', 'RU', "Здравствуйте! Можно записаться на завтра?", "Здравствуйте! Можно записаться на завтра?"]));
+      pm.test('no translation yet (AI-1)', () => pm.expect(m.messageTranslationStatus).to.eql('SKIPPED'));
+    language: text/javascript
+order: 23000
