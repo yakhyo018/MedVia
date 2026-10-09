@@ -1,0 +1,3 @@
+$kind: collection
+description: AI translation and the questionnaire summary, on the fake provider (AI_PROVIDER=fake, the default — deterministic "[KO] text", free). The patient's AI consent (setAiConsent) gates translation; the sender is answered at once (PENDING) and the translation follows; each side reads its own language, the original is kept; a message already in the reader's language is detected and skipped; a provider failure leaves FAILED and the original shown; withdrawing stops it. The optional AI_SUMMARY booking consent produces an encrypted Korean summary for the patient, the clinic and the doctor — never the admin, never in lists. The socket push is checked by npm run test:socket; the real models by npm run eval:translate. Self-contained.
+order: 9000

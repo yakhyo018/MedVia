@@ -136,6 +136,20 @@ async function main() {
 	await gql('mutation R($id: String!) { markRoomRead(roomId: $id) { unread } }', { id: room._id }, t.feride);
 	check('reading resets it, and the clinic\'s screen hears that', !!(await read));
 
+	// AI-1 (needs AI_PROVIDER=fake): with consent, the translation follows as message:translated.
+	await gql('mutation C { setAiConsent(agreed: true) { memberAiConsentAt } }', {}, t.feride);
+	const translatedText = `Пигментация ${stamp}`;
+	const sentForAi = gql('mutation M($input: MessageSendInput!) { sendMessage(input: $input) { _id messageTranslationStatus } }', { input: { roomId: room._id, messageText: translatedText } }, t.feride);
+	const translated = await waitFor(clinic.socket, 'message:translated', (m) => m.messageText === translatedText);
+	const sentAi = (await sentForAi).sendMessage;
+	check('the sender is answered before the translation (PENDING)', sentAi.messageTranslationStatus === 'PENDING', sentAi.messageTranslationStatus);
+	const ko = translated && (translated.messageTranslations || [])[0];
+	check(
+		'the clinic receives the Korean translation over the socket',
+		!!translated && translated.messageTranslationStatus === 'DONE' && ko && ko.lang === 'KO' && ko.text === `[KO] ${translatedText}`,
+		translated ? JSON.stringify(translated.messageTranslations) : 'no message:translated (is AI_PROVIDER=fake?)',
+	);
+
 	// Flood control is per member: Yahyo's 21st message in a minute is refused, Feride is not affected.
 	const yahyoRoom = (await gql('mutation O($id: String!) { openRoom(clinicId: $id) { _id } }', { id: t.clinicId }, t.yahyo)).openRoom;
 	let refusedAt = null;

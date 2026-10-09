@@ -2,6 +2,7 @@ import {
 	BadRequestException,
 	ForbiddenException,
 	Injectable,
+	Logger,
 	NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -13,7 +14,12 @@ import {
 	BookingStatusUpdate,
 } from '../../libs/dto/booking/booking.input';
 import { AuditAction, AuditGroup } from '../../libs/enums/admin.enum';
-import { BookingActor, BookingStatus, BookingTab } from '../../libs/enums/booking.enum';
+import {
+	BookingActor,
+	BookingConsentType,
+	BookingStatus,
+	BookingTab,
+} from '../../libs/enums/booking.enum';
 import { Messages } from '../../libs/enums/common.enum';
 import { MemberType } from '../../libs/enums/member.enum';
 import { AuthMember, T } from '../../libs/types/common';
@@ -22,6 +28,7 @@ import { decrypt, encrypt, parseKey } from '../../libs/utils/crypto.util';
 import { ClinicService } from '../clinic/clinic.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ChatService } from '../chat/chat.service';
+import { AiService } from '../ai/ai.service';
 import { SlotService } from './slot.service';
 import {
 	actorOf,
@@ -35,6 +42,7 @@ import {
 	slotEffect,
 	slotsNeeded,
 	snapshotConsents,
+	hasConsent,
 	statusMatch,
 	tabMatch,
 } from './booking.rules';
@@ -77,6 +85,8 @@ const lookupCards: PipelineStage.FacetPipelineStage[] = [
 
 @Injectable()
 export class BookingService {
+	private readonly logger = new Logger(BookingService.name);
+
 	/** Read once at boot; env validation has already refused a key that is not 32 bytes. */
 	private readonly key = parseKey(process.env.MEDICAL_ENC_KEY);
 
@@ -88,6 +98,7 @@ export class BookingService {
 		private readonly clinicService: ClinicService,
 		private readonly auditLogService: AuditLogService,
 		private readonly chatService: ChatService,
+		private readonly aiService: AiService,
 	) {}
 
 	/* ───────────────────────── patient ───────────────────────── */
@@ -165,6 +176,10 @@ export class BookingService {
 				BookingActor.PATIENT,
 				treatment.treatmentName,
 			);
+			// Only with the optional AI_SUMMARY consent; not awaited — the patient does not wait for AI.
+			if (hasConsent(bookingConsents, BookingConsentType.AI_SUMMARY)) {
+				void this.writeAiSummary(created._id, input.questionnaire.answers);
+			}
 			return { ...created, bookingQuestionnaire: input.questionnaire } as unknown as Booking;
 		}
 	}
@@ -211,7 +226,7 @@ export class BookingService {
 						list: [
 							{ $skip: (input.page - 1) * input.limit },
 							{ $limit: input.limit },
-							{ $project: { bookingQuestionnaire: 0 } },
+							{ $project: { bookingQuestionnaire: 0, bookingAiSummaryEnc: 0 } },
 							...lookupCards,
 						],
 						metaCounter: [{ $count: 'total' }],
@@ -396,7 +411,7 @@ export class BookingService {
 
 	/** Effective status on the way out; answers decrypted only when asked for. */
 	private present(booking: T, now: Date, withAnswers: boolean): Booking {
-		const { bookingQuestionnaire, ...rest } = booking;
+		const { bookingQuestionnaire, bookingAiSummaryEnc, ...rest } = booking;
 		const result: T = { ...rest, bookingStatus: effectiveStatus(booking, now) };
 		if (withAnswers && bookingQuestionnaire) {
 			result.bookingQuestionnaire = {
@@ -404,7 +419,33 @@ export class BookingService {
 				originalLang: bookingQuestionnaire.originalLang,
 			};
 		}
+		if (withAnswers && bookingAiSummaryEnc) {
+			result.bookingAiSummary = decrypt(bookingAiSummaryEnc, this.key);
+		}
 		return result as Booking;
+	}
+
+	/**
+	 * The Korean summary for the doctor, written after the request was sent. Only the answers go
+	 * to the AI — no name, no contact (pseudonymised). Stored encrypted like the answers. A
+	 * failure leaves no summary; the doctor still has the original answers.
+	 */
+	private async writeAiSummary(
+		bookingId: unknown,
+		answers: { question: string; answer: string }[],
+	) {
+		try {
+			const summary = await this.aiService.summarize(answers);
+			if (!summary) return;
+			await this.bookingModel
+				.updateOne(
+					{ _id: bookingId },
+					{ $set: { bookingAiSummaryEnc: encrypt(summary, this.key) } },
+				)
+				.exec();
+		} catch (err: any) {
+			this.logger.warn(`AI summary of ${String(bookingId)} not stored: ${err.message}`);
+		}
 	}
 
 	/**

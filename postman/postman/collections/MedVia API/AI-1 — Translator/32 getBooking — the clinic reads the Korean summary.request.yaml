@@ -1,0 +1,40 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query G($id: String!) { getBooking(bookingId: $id) { _id bookingAiSummary bookingConsents { consentType version } bookingQuestionnaire { answers { answer } } } }
+    variables: |-
+      { "id": "{{bookingAId}}" }
+scripts:
+  - type: beforeRequest
+    code: |-
+      setTimeout(() => {}, 500);
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      // The translation runs in the background: retry this request until it is done.
+      const tries = Number(pm.environment.get('aiTries') || 0);
+      if (!((gql.getBooking || {}).bookingAiSummary) && !body.errors && tries < 10) {
+        pm.environment.set('aiTries', String(tries + 1));
+        if (pm.execution && pm.execution.setNextRequest) pm.execution.setNextRequest(pm.info.requestName);
+        else postman.setNextRequest(pm.info.requestName);
+      } else {
+        pm.environment.unset('aiTries');
+        pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+        const b = gql.getBooking || {};
+        pm.test('summary of the answers', () => pm.expect(b.bookingAiSummary).to.eql('[KO] Пигментация 2 года / Пенициллин'));
+        pm.test('consent stamped with its version', () => pm.expect((b.bookingConsents || []).map((c) => c.version)).to.include('ai-summary-v1'));
+      }
+    language: text/javascript
+order: 32000

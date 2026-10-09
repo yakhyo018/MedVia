@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { BookingActor, BookingStatus } from '../../libs/enums/booking.enum';
-import { SenderType } from '../../libs/enums/chat.enum';
+import { MessageType, SenderType, TranslationStatus } from '../../libs/enums/chat.enum';
 import { Language, Messages } from '../../libs/enums/common.enum';
 import { MemberType } from '../../libs/enums/member.enum';
 import { T } from '../../libs/types/common';
@@ -113,4 +113,68 @@ export function bookingLine(
 	const time = new Date(bookingDate.getTime() + 9 * 60 * 60_000).toISOString().slice(11, 16);
 	const line = `${label} · ${treatmentName} · ${seoulDateOf(bookingDate)} ${time} KST`;
 	return reason ? `${line} — ${reason}` : line;
+}
+
+/* ───────────────────────── translation (AI-1) ───────────────────────── */
+
+/** A message stuck in PENDING this long (a crash mid-translation) is tried again on read. */
+export const RETRY_AFTER_MS = 2 * 60_000;
+
+/**
+ * Whether a new message goes to the AI: only text from a person, only with the patient's AI
+ * consent, and only when it is not already in the reader's language.
+ */
+export function planTranslation(
+	type: MessageType,
+	messageLang: Language,
+	target: Language,
+	consented: boolean,
+): TranslationStatus {
+	if (type !== MessageType.TEXT || !consented || messageLang === target) {
+		return TranslationStatus.SKIPPED;
+	}
+	return TranslationStatus.PENDING;
+}
+
+/**
+ * What the provider's answer changes on the message. The detected language replaces the
+ * guessed one; a message already in the reader's language needs no translation after all.
+ */
+export function translationUpdate(
+	result: { sourceLang: Language; text: string } | null,
+	target: Language,
+): T {
+	if (!result) return { messageTranslationStatus: TranslationStatus.FAILED };
+	if (result.sourceLang === target) {
+		return {
+			messageTranslationStatus: TranslationStatus.SKIPPED,
+			messageLang: result.sourceLang,
+			messageTranslations: [],
+		};
+	}
+	return {
+		messageTranslationStatus: TranslationStatus.DONE,
+		messageLang: result.sourceLang,
+		messageTranslations: [{ lang: target, text: result.text }],
+	};
+}
+
+/** FAILED, or PENDING for too long — claimed with this filter so two readers retry once. */
+export const retryFilter = (now: Date): T => ({
+	$or: [
+		{ messageTranslationStatus: TranslationStatus.FAILED },
+		{
+			messageTranslationStatus: TranslationStatus.PENDING,
+			updatedAt: { $lt: new Date(now.getTime() - RETRY_AFTER_MS) },
+		},
+	],
+});
+
+export function needsRetry(message: T, now: Date): boolean {
+	if (message.messageType !== MessageType.TEXT) return false;
+	if (message.messageTranslationStatus === TranslationStatus.FAILED) return true;
+	return (
+		message.messageTranslationStatus === TranslationStatus.PENDING &&
+		now.getTime() - new Date(message.updatedAt).getTime() > RETRY_AFTER_MS
+	);
 }

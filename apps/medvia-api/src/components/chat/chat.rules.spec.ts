@@ -1,18 +1,21 @@
 import { Types } from 'mongoose';
 import { BookingActor, BookingStatus } from '../../libs/enums/booking.enum';
-import { SenderType } from '../../libs/enums/chat.enum';
+import { MessageType, SenderType, TranslationStatus } from '../../libs/enums/chat.enum';
 import { Language } from '../../libs/enums/common.enum';
 import { MemberType } from '../../libs/enums/member.enum';
 import {
 	bookingLine,
 	decodeCursor,
 	encodeCursor,
+	needsRetry,
 	olderThan,
 	otherUnread,
+	planTranslation,
 	roomScope,
 	sideOf,
 	targetLang,
 	textFor,
+	translationUpdate,
 	unreadForLine,
 	unreadOf,
 	viewerLang,
@@ -114,5 +117,61 @@ describe('bookingLine', () => {
 		expect(unreadForLine(BookingActor.PATIENT)).toEqual(['roomUnreadClinic']);
 		expect(unreadForLine(BookingActor.CLINIC)).toEqual(['roomUnreadPatient']);
 		expect(unreadForLine(BookingActor.ADMIN)).toEqual(['roomUnreadPatient', 'roomUnreadClinic']);
+	});
+});
+
+describe('translation (AI-1)', () => {
+	const NOW = new Date('2026-10-09T05:00:00Z');
+
+	it("translates a person's text with consent into another language", () => {
+		expect(planTranslation(MessageType.TEXT, Language.RU, Language.KO, true)).toBe(
+			TranslationStatus.PENDING,
+		);
+	});
+
+	it.each([
+		['no consent', MessageType.TEXT, Language.RU, false],
+		["already in the reader's language", MessageType.TEXT, Language.KO, true],
+		['a system line', MessageType.SYSTEM, Language.EN, true],
+	])('skips %s', (_name, type, lang, consented) => {
+		expect(planTranslation(type, lang, Language.KO, consented)).toBe(TranslationStatus.SKIPPED);
+	});
+
+	it('stores the translation and the detected language', () => {
+		expect(translationUpdate({ sourceLang: Language.UZ, text: '감사합니다' }, Language.KO)).toEqual(
+			{
+				messageTranslationStatus: TranslationStatus.DONE,
+				messageLang: Language.UZ,
+				messageTranslations: [{ lang: Language.KO, text: '감사합니다' }],
+			},
+		);
+	});
+
+	it('needs no translation when the patient already wrote Korean', () => {
+		expect(
+			translationUpdate({ sourceLang: Language.KO, text: '안녕하세요' }, Language.KO),
+		).toMatchObject({
+			messageTranslationStatus: TranslationStatus.SKIPPED,
+			messageTranslations: [],
+		});
+	});
+
+	it('marks FAILED when the provider gave nothing', () => {
+		expect(translationUpdate(null, Language.KO)).toEqual({
+			messageTranslationStatus: TranslationStatus.FAILED,
+		});
+	});
+
+	it('retries FAILED and PENDING stuck for more than 2 minutes, nothing else', () => {
+		const msg = (status: TranslationStatus, minutesAgo: number, type = MessageType.TEXT) => ({
+			messageType: type,
+			messageTranslationStatus: status,
+			updatedAt: new Date(NOW.getTime() - minutesAgo * 60_000),
+		});
+		expect(needsRetry(msg(TranslationStatus.FAILED, 0), NOW)).toBe(true);
+		expect(needsRetry(msg(TranslationStatus.PENDING, 3), NOW)).toBe(true);
+		expect(needsRetry(msg(TranslationStatus.PENDING, 1), NOW)).toBe(false);
+		expect(needsRetry(msg(TranslationStatus.DONE, 60), NOW)).toBe(false);
+		expect(needsRetry(msg(TranslationStatus.FAILED, 0, MessageType.SYSTEM), NOW)).toBe(false);
 	});
 });

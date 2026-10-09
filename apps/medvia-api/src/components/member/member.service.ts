@@ -20,7 +20,7 @@ import { MemberAdminUpdate, MemberUpdate } from '../../libs/dto/member/member.up
 import { Direction, Language, Messages } from '../../libs/enums/common.enum';
 import { MemberAuthType, MemberStatus, MemberType } from '../../libs/enums/member.enum';
 import { AuthMember, T } from '../../libs/types/common';
-import { escapeRegex, shapeIntoMongoObjectId } from '../../libs/config';
+import { AI_CONSENT_VERSION, escapeRegex, shapeIntoMongoObjectId } from '../../libs/config';
 import { AuthService } from '../auth/auth.service';
 import { GoogleService } from '../auth/google.service';
 
@@ -240,6 +240,23 @@ export class MemberService {
 				{ $set: update },
 				{ new: true },
 			)
+			.lean()
+			.exec();
+		if (!member) throw new InternalServerErrorException(Messages.UPDATE_FAILED);
+		return member as Member;
+	}
+
+	/**
+	 * The patient's switch for AI translation in the chat. Agreeing stamps the time and the
+	 * version of the consent text (set here, never by the client); withdrawing removes both,
+	 * and from then on new messages are not sent to the AI provider.
+	 */
+	public async setAiConsent(memberId: ObjectId, agreed: boolean): Promise<Member> {
+		const update = agreed
+			? { $set: { memberAiConsentAt: new Date(), memberAiConsentVersion: AI_CONSENT_VERSION } }
+			: { $unset: { memberAiConsentAt: 1, memberAiConsentVersion: 1 } };
+		const member = await this.memberModel
+			.findOneAndUpdate({ _id: memberId, memberStatus: MemberStatus.ACTIVE }, update, { new: true })
 			.lean()
 			.exec();
 		if (!member) throw new InternalServerErrorException(Messages.UPDATE_FAILED);

@@ -97,6 +97,18 @@ export class MemberResolver {
 		return await this.memberService.getMyProfile(memberId);
 	}
 
+	/** Only a patient's messages are translated, so only a patient gives this consent. */
+	@Roles(MemberType.USER)
+	@UseGuards(RolesGuard)
+	@Mutation(() => Member)
+	public async setAiConsent(
+		@Args('agreed') agreed: boolean,
+		@AuthMember('_id') memberId: ObjectId,
+	): Promise<Member> {
+		console.log('Mutation: setAiConsent');
+		return await this.memberService.setAiConsent(memberId, agreed);
+	}
+
 	@UseGuards(AuthGuard)
 	@Mutation(() => Member)
 	public async updateMember(

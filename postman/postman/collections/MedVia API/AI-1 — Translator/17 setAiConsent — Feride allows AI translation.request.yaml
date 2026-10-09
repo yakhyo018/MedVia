@@ -1,0 +1,26 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation C($agreed: Boolean!) { setAiConsent(agreed: $agreed) { memberAiConsentAt memberAiConsentVersion } }
+    variables: |-
+      { "agreed": true }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const m = gql.setAiConsent || {};
+      pm.test('time and the server\'s version stamped', () => pm.expect([!!m.memberAiConsentAt, m.memberAiConsentVersion]).to.eql([true, 'ai-translate-v1']));
+    language: text/javascript
+order: 17000

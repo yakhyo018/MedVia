@@ -9,16 +9,22 @@ import { Language, Messages } from '../../libs/enums/common.enum';
 import { AuthMember, T } from '../../libs/types/common';
 import { shapeIntoMongoObjectId, toDisplayName } from '../../libs/config';
 import { ClinicService } from '../clinic/clinic.service';
+import { AiService } from '../ai/ai.service';
 import { ChatGateway } from './chat.gateway';
 import {
 	bookingLine,
 	decodeCursor,
 	encodeCursor,
+	needsRetry,
 	olderThan,
 	otherUnread,
+	planTranslation,
+	retryFilter,
 	roomScope,
+	targetLang,
 	sideOf,
 	textFor,
+	translationUpdate,
 	unreadForLine,
 	unreadOf,
 	viewerLang,
@@ -42,6 +48,7 @@ export class ChatService {
 		@InjectModel('Member') private readonly memberModel: Model<T>,
 		private readonly clinicService: ClinicService,
 		private readonly gateway: ChatGateway,
+		private readonly aiService: AiService,
 	) {}
 
 	/* ───────────────────────── patient ───────────────────────── */
@@ -87,7 +94,11 @@ export class ChatService {
 			.exec();
 
 		const page = rows.slice(0, input.limit);
-		const lang = viewerLang(viewer.side, await this.patientLang(room.memberId));
+		const patient = await this.patientOf(room.memberId);
+		const lang = viewerLang(viewer.side, patient.memberLang);
+		// Failed or stuck translations on this page are tried again in the background; the page
+		// is answered now and the fixed messages arrive as message:translated.
+		if (patient.consented) this.retryTranslations(room, page, patient.memberLang);
 		return {
 			list: page.map((m) => this.present(m, lang)),
 			nextCursor: rows.length > input.limit ? encodeCursor(page[page.length - 1] as never) : null,
@@ -105,14 +116,20 @@ export class ChatService {
 		const text = input.messageText.trim();
 		if (!text) throw new BadRequestException(Messages.BAD_REQUEST);
 
-		const messageLang =
-			viewer.side === SenderType.PATIENT ? await this.patientLang(room.memberId) : Language.KO;
+		const patient = await this.patientOf(room.memberId);
+		const messageLang = viewer.side === SenderType.PATIENT ? patient.memberLang : Language.KO;
+		const target = targetLang(viewer.side, patient.memberLang);
 		const message = await this.messageModel.create({
 			messageType: MessageType.TEXT,
 			senderType: viewer.side,
 			messageText: text,
 			messageLang,
-			messageTranslationStatus: TranslationStatus.SKIPPED,
+			messageTranslationStatus: planTranslation(
+				MessageType.TEXT,
+				messageLang,
+				target,
+				patient.consented,
+			),
 			roomId: room._id,
 			senderId: authMember._id,
 		});
@@ -120,6 +137,10 @@ export class ChatService {
 
 		const plain = message.toObject();
 		this.gateway.emitMessage(room, 'message:new', plain);
+		// Not awaited: the sender gets an answer now; the translation follows over the socket.
+		if (plain.messageTranslationStatus === TranslationStatus.PENDING) {
+			void this.translate(room, plain._id, target);
+		}
 		return this.present(plain, messageLang);
 	}
 
@@ -284,9 +305,63 @@ export class ChatService {
 		return room;
 	}
 
-	private async patientLang(memberId: unknown): Promise<Language> {
-		const member = await this.memberModel.findById(memberId, { memberLang: 1 }).lean().exec();
-		return (member?.memberLang as Language) ?? Language.EN;
+	/** The patient of a room: the language the chat is translated into, and the AI consent. */
+	private async patientOf(
+		memberId: unknown,
+	): Promise<{ memberLang: Language; consented: boolean }> {
+		const member = await this.memberModel
+			.findById(memberId, { memberLang: 1, memberAiConsentAt: 1 })
+			.lean()
+			.exec();
+		return {
+			memberLang: (member?.memberLang as Language) ?? Language.EN,
+			consented: !!member?.memberAiConsentAt,
+		};
+	}
+
+	/**
+	 * Background: ask AiService (which never throws), store the result on the message — only if
+	 * it is still PENDING, so a late answer never overwrites a newer one — and push it.
+	 */
+	private async translate(room: T, messageId: unknown, target: Language): Promise<void> {
+		try {
+			const message = await this.messageModel.findById(messageId, { messageText: 1 }).lean().exec();
+			if (!message) return;
+			const result = await this.aiService.translate(message.messageText, target);
+			const updated = await this.messageModel
+				.findOneAndUpdate(
+					{ _id: messageId, messageTranslationStatus: TranslationStatus.PENDING },
+					{ $set: translationUpdate(result, target) },
+					{ new: true },
+				)
+				.lean()
+				.exec();
+			if (updated) this.gateway.emitMessage(room, 'message:translated', updated);
+		} catch (err: any) {
+			this.logger.warn(`translation of ${String(messageId)} not stored: ${err.message}`);
+		}
+	}
+
+	/**
+	 * Each candidate is claimed with a conditional update (FAILED or stale PENDING → PENDING):
+	 * two readers opening the same page retry a message once, not twice.
+	 */
+	private retryTranslations(room: T, page: T[], patientLang: Language): void {
+		const now = new Date();
+		for (const message of page.filter((m) => needsRetry(m, now))) {
+			void this.messageModel
+				.updateOne(
+					{ _id: message._id, ...retryFilter(now) },
+					{ $set: { messageTranslationStatus: TranslationStatus.PENDING } },
+				)
+				.exec()
+				.then((claimed) => {
+					if (claimed.modifiedCount === 1) {
+						return this.translate(room, message._id, targetLang(message.senderType, patientLang));
+					}
+				})
+				.catch((err) => this.logger.warn(`retry of ${String(message._id)} failed: ${err.message}`));
+		}
 	}
 
 	private present(message: T, lang: Language): ChatMessage {
