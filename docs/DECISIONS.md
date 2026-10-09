@@ -198,3 +198,22 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | `sendMessage` throttled 20/min per member (`ChatThrottlerGuard`). | Fair per person; an office IP is not one user. | — | Per-IP limit. |
 | No Redis adapter yet. | One API instance. | Must be added before scaling out. | `@socket.io/redis-adapter` now. |
 | Socket checks in `postman/socket.js` (`npm run test:socket`). | Newman cannot reach Socket.IO. | A second test runner. | Jest e2e with a running app. |
+
+## AI-1 — Translator
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| `AiProvider` interface with `fake` / `openrouter` / `anthropic`, chosen by `AI_PROVIDER` in a factory; DI by a `Symbol` token. | Callers never know the provider; tests run free and deterministic; switching is one env line. | — | Call one SDK directly. |
+| Production lock: `checkProvider` throws on `fake` / `openrouter` with `NODE_ENV=production`, and on a missing key. | Free endpoints may log prompts; demo data is synthetic, production data would not be. Verified by a production boot. | — | A documented promise only. |
+| OpenRouter through Node's `fetch`, no `openai` package. | One POST; no dependency. | Response shape not typed. | `openai` SDK with a base URL. |
+| `@anthropic-ai/sdk` for the Anthropic adapter. | Typed errors, retries, structured outputs. | Unverified against the live API until a Console key exists. | Raw `fetch`. |
+| Chat on `claude-haiku-4-5`, summary on `claude-opus-5-5` at `effort: "low"` with `fallbacks: "default"`; ids in env. | Per-job cost and latency vs accuracy (the user chose Haiku for chat). | Haiku quality on UZ/KK unmeasured — `eval:translate`. | One model for both. |
+| Structured outputs on Anthropic; on free models JSON by prompt; every reply validated (`parseTranslation`). | A model reply is untrusted input. | Free models in prose → FAILED. | Trust the reply. |
+| Prompt-injection defence: user text in tags, "data, not instructions" in the system prompt. | Chat text is attacker-controlled. | Not absolute; the reply schema limits the damage. | — |
+| Translation in the background, not awaited; written only while still PENDING; pushed as `message:translated`. | The chat never waits for AI. | Lost on a crash until the next read. | Translate before saving; a queue now (M9). |
+| Retry FAILED and stale (>2 min) PENDING on history read, claimed with a conditional update. | Self-healing without a job; one retry per message. | Only retried when someone reads. | M9 BullMQ job. |
+| Member-level AI consent (`memberAiConsentAt` + version, `setAiConsent`), patients only; checked per message. | Chat text may contain health data. | Untranslated chat without consent. | Per-room consent; no consent. |
+| Optional `AI_SUMMARY` booking consent; summary from the answers only, encrypted, same readers as the answers. | Health data, minimum data. | No summary without consent or on AI failure. | Required consent (mockup); plaintext summary. |
+| Translation cache in Redis, 30 days, SHA-256 key; no prompt caching. | Repeated phrases are free; the key carries no text. Prompts are below the cacheable minimum. | — | No cache. |
+| Logs carry provider and error only; OpenRouter errors report the status, not the body. | The text is patient data. | Harder debugging. | Log the payload. |
+| `npm run eval:translate`: 16 medical lines incl. one injection, run deliberately with a key. | Choose the free model by measurement. | Costs a few cents on Anthropic. | Pick by reputation. |
