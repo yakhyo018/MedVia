@@ -41,6 +41,15 @@ export const envValidationSchema = Joi.object({
 	// "true" registers the Postman-only test helpers (devShiftBookingTime). Ignored in production.
 	ENABLE_TEST_SUPPORT: Joi.string().valid('true', 'false', '').optional(),
 
+	// AI-1. fake (default, tests) | openrouter (demo, synthetic data) | anthropic (production).
+	// The production lock and the per-provider key check live in ai.rules (checkProvider).
+	AI_PROVIDER: Joi.string().valid('fake', 'openrouter', 'anthropic').default('fake'),
+	OPENROUTER_API_KEY: Joi.string().allow('').optional(),
+	ANTHROPIC_API_KEY: Joi.string().allow('').optional(),
+	// Model ids; anthropic defaults to claude-haiku-4-5 (chat) and claude-opus-5-5 (summary).
+	AI_MODEL_TRANSLATE: Joi.string().allow('').optional(),
+	AI_MODEL_SUMMARY: Joi.string().allow('').optional(),
+
 	// Added in later milestones; optional for now.
 	GOOGLE_CLIENT_ID: Joi.string().allow('').optional(),
 }).unknown(true);

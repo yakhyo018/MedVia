@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-08 — M7 merged into `develop` and pushed; AI-1 is next._
+_Last updated: 2026-10-09 — AI-1 built on `feature/ai`, waiting for the user's run._
 
 ## The project
 
@@ -31,31 +31,30 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M5 | Slot + Booking — atomic hold, transactions, state machine, consent | ✅ done, merged (`eb82b79`) |
 | M6 | Review — only after a COMPLETED booking | ✅ done, merged (`7839c2e`) |
 | M7 | Chat — socket.io rooms | ✅ done, merged (`9fb3323`) |
-| **AI-1** | **Translator — chat translation + questionnaire KO summary** | **next** |
+| **AI-1** | **Translator — chat translation + questionnaire KO summary** | **built, Postman + socket run by the user pending** |
 | M8 | Community + CS + Notification | |
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
 | AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
 
-## Next step: AI-1 — Translator (phase B of M7), on `feature/ai`
+## Next step: the user runs AI-1, then merge; then M8
 
-**AI-1 — Translator** on `feature/ai` (plan agreed 2026-10-08, see DECISIONS "AI — scope"):
-- `components/ai`, `ai.service` the only door; `AiProvider` with `openrouter` (fetch, best free model
-  for the demo — data is synthetic), `anthropic` (`@anthropic-ai/sdk`, marked unverified until a
-  Console key exists) and `fake` (tests). `AI_PROVIDER=openrouter|fake` refuses to boot in production.
-- Env: `AI_PROVIDER` (default fake), `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `AI_MODEL_TRANSLATE`,
-  `AI_MODEL_SUMMARY`. Models: chat → `claude-haiku-4-5`, questionnaire summary → `claude-opus-5-5`
-  on the anthropic provider; the free OpenRouter model is picked with an `eval:translate` script.
-- Chat: messages saved PENDING, translated in the background, `message:translated` pushed; FAILED
-  retried on history read; Redis cache `ai:translation:<sha256>`. Member AI consent
-  (`memberAiConsentAt` + version) required for translation.
-- Booking: optional `AI_SUMMARY` consent; encrypted Korean summary for the clinic and the doctor.
-- Add `sk-or-` and `sk-ant-` to the secret scan in CLAUDE.md.
+AI-1 is built on `feature/ai` (not committed yet). Left: the user runs `npm run test:api -- AI-1`
+and `npm run test:socket` (both need `AI_PROVIDER=fake`, the default), then commit and merge.
+
+- **Anthropic adapter: unverified** against the live API (request shapes covered by
+  `providers.spec.ts`). Verify with a Console key and a few cents before publishing the portfolio:
+  `AI_PROVIDER=anthropic`, `ANTHROPIC_API_KEY=…`, then one chat message and one booking.
+- **OpenRouter demo:** the user creates a free key, runs
+  `EVAL_MODELS="<free model ids>" npm run eval:translate`, picks a model, then sets
+  `AI_PROVIDER=openrouter` and `AI_MODEL_TRANSLATE=<id>` in `.env`. Never in production — the API
+  refuses to boot.
+- After AI-1: **M8 — Community + CS + Notification** (start with the collection review).
 
 ## Session handoff — where the last session stopped
 
 - `develop` is pushed and clean; `main` is still M0 (on purpose, see Open items). No feature
-  branches are left; AI-1 starts with `git checkout -b feature/ai develop`.
+  branches are left except `feature/ai` (AI-1, until it is merged).
 - Work only in `~/Desktop/MedVia` — never in a git worktree. If the desktop app starts a session
   inside `.claude/worktrees/…`, its hook blocks the Write tool on the main folder; open the session
   in `~/Desktop/MedVia` instead.
@@ -65,8 +64,8 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 - Atlas Search: index `clinic_search` exists and is READY, with `clinicName`, `clinicNameKo`,
   `clinicDesc` and `clinicTreatmentNames` mapped; `.env` has `ATLAS_SEARCH_INDEX=clinic_search`.
   New mapped fields must be added by the user in Compass (Indexes → Search Indexes → Edit).
-- Last full runs (2026-10-08, M7 branch): Newman M0–M7 green (865 assertions), Jest 128/128,
-  `npm run test:socket` 11/11,
+- Last full runs (2026-10-09, AI-1 branch): Newman M0–AI-1 green (923 assertions), Jest 162/162,
+  `npm run test:socket` 13/13,
   `npm run typecheck`, `lint:check`, `build` clean.
 - Merge routine the user expects after "commit qilib develop'ga merge qil": stage by name, read the
   diff, secret scan → commit → `git merge --no-ff` into `develop` → close the milestone here →
@@ -133,6 +132,7 @@ npm run seed:admin             # once; needs ADMIN_EMAIL / ADMIN_PASSWORD in .en
 npm run test:api               # all Postman folders (needs the API running)
 npm run test:api -- M1         # one milestone
 npm run test:socket            # the chat socket end to end (needs the API running)
+npm run eval:translate         # real AI models side by side (needs a key; costs on Anthropic)
 npm test                       # Jest unit tests (no API, no database needed)
 npm run typecheck && npm run lint:check && npm run build
 ```

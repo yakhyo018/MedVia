@@ -61,3 +61,6 @@ export const availableDoctorSorts = [
 	'doctorViews',
 	'doctorRating',
 ];
+
+/** The text of "Allow AI translation of my chat" a patient agreed to; bump when the text changes. */
+export const AI_CONSENT_VERSION = 'ai-translate-v1';

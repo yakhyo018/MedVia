@@ -41,10 +41,14 @@ export enum BookingActor {
 }
 registerEnumType(BookingActor, { name: 'BookingActor' });
 
-/** The checkboxes on "Review and give consent". Both are required for a request. */
+/**
+ * The checkboxes on "Review and give consent". SHARE_DATA and BOOKING_TERMS are required;
+ * AI_SUMMARY ("a Korean AI summary of my answers for the doctor") is optional.
+ */
 export enum BookingConsentType {
 	SHARE_DATA = 'SHARE_DATA',
 	BOOKING_TERMS = 'BOOKING_TERMS',
+	AI_SUMMARY = 'AI_SUMMARY',
 }
 registerEnumType(BookingConsentType, { name: 'BookingConsentType' });
 

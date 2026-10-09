@@ -84,6 +84,10 @@ export class Booking {
 	@Field(() => BookingQuestionnaire, { nullable: true })
 	bookingQuestionnaire?: BookingQuestionnaire;
 
+	/** "AI summary · 한국어" — not a diagnosis. Same readers as the questionnaire. */
+	@Field(() => String, { nullable: true })
+	bookingAiSummary?: string;
+
 	@Field(() => [ConsentSnapshot])
 	bookingConsents!: ConsentSnapshot[];
 

@@ -175,7 +175,12 @@ export function respondDeadline(now: Date, bookingDate: Date): Date {
 export const CONSENT_VERSIONS: Record<BookingConsentType, string> = {
 	[BookingConsentType.SHARE_DATA]: 'share-v1',
 	[BookingConsentType.BOOKING_TERMS]: 'terms-v1',
+	[BookingConsentType.AI_SUMMARY]: 'ai-summary-v1',
 };
+
+/** Whether the patient ticked an (optional) consent on this booking. */
+export const hasConsent = (consents: T[], type: BookingConsentType) =>
+	consents.some((c) => c.consentType === type && c.agreed);
 
 const REQUIRED_CONSENTS = [BookingConsentType.SHARE_DATA, BookingConsentType.BOOKING_TERMS];
 

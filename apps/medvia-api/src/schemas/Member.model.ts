@@ -97,6 +97,16 @@ const MemberSchema = new Schema(
 			type: Date,
 		},
 
+		// "Allow AI translation of my chat messages" — the text goes to an outside AI provider.
+		// Absent or withdrawn: messages travel untranslated. The version names the text agreed to.
+		memberAiConsentAt: {
+			type: Date,
+		},
+
+		memberAiConsentVersion: {
+			type: String,
+		},
+
 		deletedAt: {
 			type: Date,
 		},

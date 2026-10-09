@@ -8,6 +8,7 @@ import { AuthModule } from '../auth/auth.module';
 import { ClinicModule } from '../clinic/clinic.module';
 import { AuditLogModule } from '../audit-log/audit-log.module';
 import { ChatModule } from '../chat/chat.module';
+import { AiModule } from '../ai/ai.module';
 import SlotSchema from '../../schemas/Slot.model';
 import BookingSchema from '../../schemas/Booking.model';
 import TreatmentSchema from '../../schemas/Treatment.model';
@@ -30,6 +31,7 @@ import DoctorSchema from '../../schemas/Doctor.model';
 		ClinicModule,
 		AuditLogModule,
 		ChatModule,
+		AiModule,
 	],
 	providers: [SlotResolver, SlotService, BookingResolver, BookingService],
 	exports: [BookingService],

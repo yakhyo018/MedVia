@@ -64,6 +64,13 @@ export class Member {
 	@Field(() => Date, { nullable: true })
 	memberLastLoginAt?: Date;
 
+	/** Set while the member allows AI translation of their chat; null when withdrawn. */
+	@Field(() => Date, { nullable: true })
+	memberAiConsentAt?: Date;
+
+	@Field(() => String, { nullable: true })
+	memberAiConsentVersion?: string;
+
 	@Field(() => Date, { nullable: true })
 	deletedAt?: Date;
 

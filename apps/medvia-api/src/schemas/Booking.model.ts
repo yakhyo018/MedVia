@@ -84,6 +84,12 @@ const BookingSchema = new Schema(
 			required: true,
 		},
 
+		// The Korean AI summary of the answers for the doctor (AI-1), encrypted like them.
+		// Only with the AI_SUMMARY consent; absent while it is being written or if AI failed.
+		bookingAiSummaryEnc: {
+			type: String,
+		},
+
 		bookingConsents: {
 			type: [ConsentSnapshotSchema],
 			default: [],
