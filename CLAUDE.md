@@ -138,8 +138,11 @@ unrelated files on every run. Here the two halves are explicit: `lint:check` nev
 2. Read `git diff --cached` in full.
 3. Scan what is staged for secrets — it must print nothing:
    ```bash
-   git diff --cached | grep -nE "mongodb(\+srv)?://[^<]+:[^<@]+@|SECRET_TOKEN=[^ .{][^ ]{7,}|rediss?://[^ ]+:[^ ]+@|ADMIN_PASSWORD=[^ .{[]"
+   git diff --cached | grep -nE "mongodb(\+srv)?://[^<]+:[^<@]+@|SECRET_TOKEN=[^ .{][^ ]{7,}|rediss?://[^ ]+:[^ ]+@|ADMIN_PASSWORD=[^ .{[]|MEDICAL_ENC_KEY=[A-Za-z0-9+/]{20,}|sk-ant-[A-Za-z0-9_-]{10,}|sk-or-[A-Za-z0-9_-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"
    ```
+   It covers Atlas and Redis URLs, the JWT secret, the admin password, the questionnaire key,
+   Anthropic and OpenRouter API keys, and JWTs (`eyJ…` — a Postman environment can pick up a
+   token the tests set).
 
 `.env.example` is the committed template and only ever holds placeholders (`<user>:<password>`).
 Real values live in `.env`, which is git-ignored. On 2026-10-06 real Atlas credentials reached

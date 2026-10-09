@@ -4,3 +4,15 @@ values:
     value: 'http://localhost:3000'
   - key: token
     value: ''
+  - key: tmpEmail
+    value: ''
+  - key: patientEmail
+    value: ''
+  - key: patientPassword
+    value: ''
+  - key: patientToken
+    value: ''
+  - key: adminToken
+    value: ''
+  - key: adminId
+    value: ''
