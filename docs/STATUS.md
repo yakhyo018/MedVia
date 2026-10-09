@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-09 — AI-1 built on `feature/ai`, waiting for the user's run._
+_Last updated: 2026-10-09 — AI-1 merged into `develop` and pushed; M8 is next._
 
 ## The project
 
@@ -11,7 +11,7 @@ MedVia — portfolio project for Korean healthtech job applications. Foreign pat
 find verified Seoul clinics and book treatments in their own language. Not a business: no SMS, no
 outgoing email, no payments, no HIRA. The sample patient persona is **Feride Karimova**.
 
-- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M7
+- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M7 + AI-1
 - Design and data model: `~/Desktop/MedVia-design` — ER source `er/model.js`, mockup generators `source/`
 - ER model (24 collections): https://claude.ai/artifact/LiWJjgdBPcaLSjdGkefKcA
 - Clickable prototype (61 screens): https://claude.ai/artifact/Js6b1j85jbvBrxCSpNRiWt
@@ -31,16 +31,15 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M5 | Slot + Booking — atomic hold, transactions, state machine, consent | ✅ done, merged (`eb82b79`) |
 | M6 | Review — only after a COMPLETED booking | ✅ done, merged (`7839c2e`) |
 | M7 | Chat — socket.io rooms | ✅ done, merged (`9fb3323`) |
-| **AI-1** | **Translator — chat translation + questionnaire KO summary** | **built, Postman + socket run by the user pending** |
-| M8 | Community + CS + Notification | |
+| AI-1 | Translator — chat translation + questionnaire KO summary | ✅ done, merged (`f6df81d`) — Anthropic adapter unverified |
+| **M8** | **Community + CS + Notification** | **next** |
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
 | AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
 
-## Next step: the user runs AI-1, then merge; then M8
+## Next step: M8 — Community + CS + Notification, start with the collection review
 
-AI-1 is built on `feature/ai` (not committed yet). Left: the user runs `npm run test:api -- AI-1`
-and `npm run test:socket` (both need `AI_PROVIDER=fake`, the default), then commit and merge.
+AI-1 is merged. Open AI items:
 
 - **Anthropic adapter: unverified** against the live API (request shapes covered by
   `providers.spec.ts`). Verify with a Console key and a few cents before publishing the portfolio:
@@ -49,12 +48,14 @@ and `npm run test:socket` (both need `AI_PROVIDER=fake`, the default), then comm
   `EVAL_MODELS="<free model ids>" npm run eval:translate`, picks a model, then sets
   `AI_PROVIDER=openrouter` and `AI_MODEL_TRANSLATE=<id>` in `.env`. Never in production — the API
   refuses to boot.
-- After AI-1: **M8 — Community + CS + Notification** (start with the collection review).
+- M8 review: board articles + comments (ported from Nestar, check every DTO for `whitelist`),
+  CS notices/inquiries, notifications (booking, chat, review, follow events). Sample male
+  persona is Yahyo (see memory).
 
 ## Session handoff — where the last session stopped
 
 - `develop` is pushed and clean; `main` is still M0 (on purpose, see Open items). No feature
-  branches are left except `feature/ai` (AI-1, until it is merged).
+  branches are left; M8 starts with `git checkout -b feature/community develop`.
 - Work only in `~/Desktop/MedVia` — never in a git worktree. If the desktop app starts a session
   inside `.claude/worktrees/…`, its hook blocks the Write tool on the main folder; open the session
   in `~/Desktop/MedVia` instead.
