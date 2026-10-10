@@ -217,3 +217,18 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | Translation cache in Redis, 30 days, SHA-256 key; no prompt caching. | Repeated phrases are free; the key carries no text. Prompts are below the cacheable minimum. | — | No cache. |
 | Logs carry provider and error only; OpenRouter errors report the status, not the body. | The text is patient data. | Harder debugging. | Log the payload. |
 | `npm run eval:translate`: 16 medical lines incl. one injection, run deliberately with a key. | Choose the free model by measurement. | Costs a few cents on Anthropic. | Pick by reputation. |
+
+## M8a — Community
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| M8 split into M8a Community, M8b CS, M8c Notifications, three merges. | Smaller reviews and Postman runs. | — | One large milestone. |
+| No TREATMENT_REVIEW board; the "Treatment Reviews" tab lists the verified M6 reviews. | One verified-review pipeline, one moderation. | No long-form review with photos. | A second moderated review type. |
+| Boards QNA, HEALTH_TIP (NEWS folded in), FREE; `POSTERS` decides who writes where; clinic accounts never post. | Medical-ad caution; matches the mockup tabs. | — | Anyone posts anywhere (Nestar). |
+| Published at once (ACTIVE / HIDDEN / DELETE); no DRAFT or PENDING. | Community speed; moderation after reports. | Harmful posts are visible until reported. | Pre-moderation. |
+| Cut: images, tags, comment likes, replies (flat comments), `commentGroup` → `articleId`. | Scope; before/after photo risk; only articles take comments. | — | Nestar's full shape. |
+| Nestar fixes: escaped search, soft delete, explicit editable fields, 404 for missing, post must be ACTIVE + one transaction for comment and counter. | ReDoS, history, mass assignment, correct status codes, consistency. | — | Port as is. |
+| Sort whitelisted (`availableArticleSorts`), `_id` as tie-breaker. | Information leak and slow sorts. | — | Free-form sort. |
+| `articleAnswered` recomputed from ACTIVE doctor comments; `commentAuthorType` stored on the comment. | Derived data that heals; the copied value never changes. | One `exists` query per comment change. | Flip the flag on create. |
+| Reports: unique per member and target; 5 pending hide the target in the same transaction; the admin's HIDE/SHOW closes pending reports, resets the counter, is audited. | Distinct people, fast brake, human decision; the counter means pending. | A coordinated group of 5 can hide a post until the admin acts. | Admin-only; no counter reset. |
+| Likes through the M3.1 registry (`ARTICLE` handler); views deduplicated per member; Recently Visited filtered to clinics and doctors. | No new mutation; posts are not "visits". | — | A `likeArticle` mutation (Nestar). |

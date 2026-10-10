@@ -1887,3 +1887,101 @@ One. Each retry first claims the message with a conditional update — FAILED or
 **7. How is the patient's consent enforced?**
 
 On the server, per message: the room's patient must have `memberAiConsentAt`. The version of the consent text is stamped by the server; withdrawing removes it and new messages are no longer sent. The summary has its own per-booking consent.
+
+---
+
+## M8a — Community (board articles, comments, reports)
+
+### 1. Porting is reviewing: five things Nestar got wrong
+
+The article and comment modules came from Nestar. Copying them as they were would have copied five
+bugs, each a classic interview topic:
+
+| Nestar | Problem | MedVia |
+| --- | --- | --- |
+| `new RegExp(text, 'i')` from raw input | **ReDoS / regex injection**: `(a+)+$` makes the regex engine backtrack exponentially and freezes the single Node thread | `escapeRegex(text)` first; a test searches for `(a+)+$` and gets an empty list at once |
+| `findOneAndDelete`, `findByIdAndDelete` | hard delete — history, counters and reports lose their target | `status: DELETE` + `deletedAt` |
+| `findOneAndUpdate(filter, input)` — the whole input | **mass assignment**: whatever field the DTO lets through is written | the author edits the title, content and language only |
+| `InternalServerErrorException(NO_DATA_FOUND)` | a missing post answered 500 — "the server broke" — instead of 404 | `NotFoundException` |
+| create the comment, then `$inc` the post's counter, never checking the post | a comment under a deleted post; two writes that can half-happen | the post must be ACTIVE; comment + counter + answer flag in one transaction |
+
+### 2. Nestar's inquiry shape — with a whitelist
+
+Lists take `{ page, limit, sort, direction, search: {...} }` in the GraphQL body (not the URL — one
+`POST /graphql`). The service turns it into `$match` → `$sort` → `$facet { list, metaCounter }`.
+Nestar put the client's `sort` straight into `{ [sort]: direction }`; MedVia validates it with
+`@IsIn(availableArticleSorts)`: sorting by an arbitrary field can leak information (order by
+`memberPassword`) or force a slow unindexed sort.
+
+### 3. Who writes where — a table
+
+`POSTERS` maps a board to the member types allowed on it: patients ask (QNA) and use the free
+board; health tips come from doctors and the team (a medical tip from an anonymous account is what
+medical-ad rules worry about); clinic accounts never post (that would be advertising). The Jest
+test walks all 12 board × member-type pairs.
+
+### 4. "Doctor answered" is derived again
+
+`articleAnswered` is recomputed — "is there an ACTIVE comment by a doctor under this question?" —
+after every comment that appears or disappears, inside the same transaction. Flipping it to `true`
+on a doctor's comment would leave the badge behind when that answer is deleted or hidden. To answer
+the question without a lookup, each comment stores `commentAuthorType`: a copy, but of a value that
+never changes (a member's type is fixed), so it cannot drift — unlike a copied name.
+
+### 5. Reports: distinct people, an automatic brake, a human decision
+
+- **Distinct people.** A unique index on `{ memberId, reportRefId }`: reporting twice is refused,
+  and five reports mean five members, not one angry member clicking five times.
+- **An automatic brake.** At 5 pending reports the post hides itself, in the same transaction as
+  the fifth report — abuse does not wait for an admin to wake up. The move is conditional
+  (ACTIVE → HIDDEN), so it cannot overwrite an admin's decision made a moment earlier.
+- **A human decision.** `moderateContent(HIDE | SHOW)` closes every pending report of the target
+  (RESOLVED or DISMISSED), resets the counter, and is audited. The counter means *pending* reports:
+  without the reset, a post the admin restored would hide again at the very next report. A
+  dismissed reporter cannot report the same post again — the unique index still holds.
+
+### 6. The like registry pays off again
+
+Liking a post needed no new mutation: `BoardArticleService` registers an `ARTICLE` handler with
+`LikeService` (M3.1's strategy pattern) — `isLikeable` (ACTIVE posts only), `moveLikes`,
+`countLikes` — and the existing `likeTarget` works. Views reuse the unique `views` collection
+(one per member and post); Recently Visited now filters to clinics and doctors, so posts do not
+appear in that timeline.
+
+### 7. What the tests proved
+
+| Broken on purpose | Caught by |
+| --- | --- |
+| anyone posts anywhere | Jest table walk |
+| the search not escaped | Jest "escapes the search text" |
+| the sort not whitelisted | Jest "sorts by a whitelisted field only" |
+| "Doctor answered" only ever set, never recomputed | Postman "the badge left with the answer" |
+| a comment allowed under a missing post | Postman "on a post that does not exist" |
+| no auto-hide at 5 reports | Postman "five reports hid it", the admin queue |
+| the report counter not reset by the admin | Postman "the count starts again" |
+
+### Interview questions and answers
+
+**1. What is ReDoS and where did you find it?**
+
+A regular expression whose backtracking grows exponentially on crafted input, blocking Node's single thread. Nestar built `new RegExp(userText)` for search; MedVia escapes the text first, and a test searches for `(a+)+$`.
+
+**2. Why validate the sort field? It is only a sort.**
+
+A client-chosen sort can order by any field — even `memberPassword`, leaking information through the order — or force an unindexed sort over the whole collection. A whitelist with `@IsIn` closes both.
+
+**3. What is mass assignment, and how did the port avoid it?**
+
+Writing the whole input object into the document: any field the DTO accepts becomes writable. The update takes the title, content and language explicitly; status and counters are never in it.
+
+**4. Five reports hide a post automatically. Why not just let the admin decide?**
+
+Speed: harmful content disappears at once instead of when an admin looks. The admin still decides — confirming or restoring — and the count is of distinct members, enforced by a unique index.
+
+**5. You copy the comment author's member type onto the comment. Isn't that denormalization risky?**
+
+Only when the copied value can change. A member's type never does, so the copy cannot drift; a copied name could. It lets "Doctor answered" be recomputed with one indexed `exists` query.
+
+**6. How did adding likes to posts take almost no code?**
+
+The like module is a registry: a target registers how to check it, move its counter and count it. Posts registered an `ARTICLE` handler; the existing `likeTarget` mutation, its race handling and its tests work unchanged.
