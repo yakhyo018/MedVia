@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-10 — M8a (Community) built on `feature/community`, waiting for the user's run._
+_Last updated: 2026-10-10 — M8a merged into `develop` and pushed; M8b (CS) is next._
 
 ## The project
 
@@ -11,7 +11,7 @@ MedVia — portfolio project for Korean healthtech job applications. Foreign pat
 find verified Seoul clinics and book treatments in their own language. Not a business: no SMS, no
 outgoing email, no payments, no HIRA. The sample patient persona is **Feride Karimova**.
 
-- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M7 + AI-1
+- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M7 + AI-1 + M8a
 - Design and data model: `~/Desktop/MedVia-design` — ER source `er/model.js`, mockup generators `source/`
 - ER model (24 collections): https://claude.ai/artifact/LiWJjgdBPcaLSjdGkefKcA
 - Clickable prototype (61 screens): https://claude.ai/artifact/Js6b1j85jbvBrxCSpNRiWt
@@ -32,15 +32,14 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M6 | Review — only after a COMPLETED booking | ✅ done, merged (`7839c2e`) |
 | M7 | Chat — socket.io rooms | ✅ done, merged (`9fb3323`) |
 | AI-1 | Translator — chat translation + questionnaire KO summary | ✅ done, merged (`f6df81d`) — Anthropic adapter unverified |
-| **M8** | **Community + CS + Notification** — split into M8a / M8b / M8c | **M8a built, Postman run by the user pending** |
+| **M8** | **Community + CS + Notification** — split into M8a / M8b / M8c | **M8a ✅ merged (`4f598e4`); M8b next** |
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
 | AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
 
-## Next step: the user runs M8a, then merge; then M8b (CS)
+## Next step: M8b — CS (notices + inquiries), on `feature/cs`
 
-M8a is built on `feature/community` (not committed yet). Left: the user runs
-`npm run test:api -- M8a`, then commit and merge.
+M8a is merged. The M8b plan below was reviewed with M8 — present the build plan, then build.
 
 M8 review decisions (2026-10-10): split M8a / M8b / M8c; no TREATMENT_REVIEW board (the tab lists
 M6 reviews); flat comments; notifications store EN text + `notificationParams`; translation of
@@ -60,7 +59,7 @@ about a clinic and data-deletion requests go to the platform, not the clinic cha
 ## Session handoff — where the last session stopped
 
 - `develop` is pushed and clean; `main` is still M0 (on purpose, see Open items). No feature
-  branches are left except `feature/community` (M8a, until it is merged).
+  branches are left; M8b starts with `git checkout -b feature/cs develop`.
 - Work only in `~/Desktop/MedVia` — never in a git worktree. If the desktop app starts a session
   inside `.claude/worktrees/…`, its hook blocks the Write tool on the main folder; open the session
   in `~/Desktop/MedVia` instead.
