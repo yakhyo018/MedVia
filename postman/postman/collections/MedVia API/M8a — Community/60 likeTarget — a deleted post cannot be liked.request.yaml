@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{reporter2Token}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation Like($input: LikeTargetInput!) { likeTarget(input: $input) { meLiked likes } }
+    variables: |-
+      { "input": { "likeGroup": "ARTICLE", "likeRefId": "{{qnaId}}" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test("refused: No data is found!", () => pm.expect(msg).to.include("No data is found!"));
+      pm.test('code NOT_FOUND', () => pm.expect(code).to.eql('NOT_FOUND'));
+    language: text/javascript
+order: 60000

@@ -11,6 +11,9 @@ import { ViewModule } from './view/view.module';
 import { BookingModule } from './booking/booking.module';
 import { ReviewModule } from './review/review.module';
 import { ChatModule } from './chat/chat.module';
+import { BoardArticleModule } from './board-article/board-article.module';
+import { CommentModule } from './comment/comment.module';
+import { ReportModule } from './report/report.module';
 import { TestSupportModule, testSupportEnabled } from './test-support/test-support.module';
 
 @Module({
@@ -23,6 +26,9 @@ import { TestSupportModule, testSupportEnabled } from './test-support/test-suppo
 		BookingModule,
 		ReviewModule,
 		ChatModule,
+		BoardArticleModule,
+		CommentModule,
+		ReportModule,
 		FollowModule,
 		ViewModule,
 		AuditLogModule,

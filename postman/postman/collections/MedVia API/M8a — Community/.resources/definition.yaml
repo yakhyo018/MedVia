@@ -1,0 +1,3 @@
+$kind: collection
+description: Community. Who posts where (patients ask and use the free board, doctors and the team write health tips, clinic accounts never post); the public list with an escaped search, a whitelisted sort and the doctors' "Waiting" filter; likes and one view per member; flat comments, where a doctor's comment on a question earns "Doctor answered" and its removal takes the badge away (recomputed); reports counting distinct members, five hiding a post at once, the admin's SHOW dismissing them and HIDE confirming them, every decision audited; soft deletes. Self-contained. Needs ADMIN_EMAIL / ADMIN_PASSWORD in .env.
+order: 10000

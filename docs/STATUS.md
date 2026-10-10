@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-09 — AI-1 merged into `develop` and pushed; M8 is next._
+_Last updated: 2026-10-10 — M8a (Community) built on `feature/community`, waiting for the user's run._
 
 ## The project
 
@@ -32,30 +32,35 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M6 | Review — only after a COMPLETED booking | ✅ done, merged (`7839c2e`) |
 | M7 | Chat — socket.io rooms | ✅ done, merged (`9fb3323`) |
 | AI-1 | Translator — chat translation + questionnaire KO summary | ✅ done, merged (`f6df81d`) — Anthropic adapter unverified |
-| **M8** | **Community + CS + Notification** | **next** |
+| **M8** | **Community + CS + Notification** — split into M8a / M8b / M8c | **M8a built, Postman run by the user pending** |
 | M9 | Batch — BullMQ delayed jobs | |
 | M10 | Admin + audit log + faker seed | |
 | AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
 
-## Next step: M8 — Community + CS + Notification, start with the collection review
+## Next step: the user runs M8a, then merge; then M8b (CS)
 
-AI-1 is merged. Open AI items:
+M8a is built on `feature/community` (not committed yet). Left: the user runs
+`npm run test:api -- M8a`, then commit and merge.
 
-- **Anthropic adapter: unverified** against the live API (request shapes covered by
-  `providers.spec.ts`). Verify with a Console key and a few cents before publishing the portfolio:
-  `AI_PROVIDER=anthropic`, `ANTHROPIC_API_KEY=…`, then one chat message and one booking.
-- **OpenRouter demo:** the user creates a free key, runs
-  `EVAL_MODELS="<free model ids>" npm run eval:translate`, picks a model, then sets
-  `AI_PROVIDER=openrouter` and `AI_MODEL_TRANSLATE=<id>` in `.env`. Never in production — the API
-  refuses to boot.
-- M8 review: board articles + comments (ported from Nestar, check every DTO for `whitelist`),
-  CS notices/inquiries, notifications (booking, chat, review, follow events). Sample male
-  persona is Yahyo (see memory).
+M8 review decisions (2026-10-10): split M8a / M8b / M8c; no TREATMENT_REVIEW board (the tab lists
+M6 reviews); flat comments; notifications store EN text + `notificationParams`; translation of
+Q and A, notices and inquiries is a separate small AI step after M8; `inquiries` kept (complaints
+about a clinic and data-deletion requests go to the platform, not the clinic chat).
+
+- **M8b — CS:** `notices` (NOTICE / FAQ, HOLD/ACTIVE/DELETE, `noticePinned`, `noticeFaqCategory`,
+  manual `noticeTranslations[{lang, title, content}]`, `noticeViews`) and `inquiries` (category,
+  NEW/IN_PROGRESS/ANSWERED/RESOLVED, title, content, lang, replyLang, embedded thread max 50,
+  optional own `bookingId`, `resolvedAt`; no files, no assignee).
+- **M8c — Notifications:** types BOOKING_CONFIRMED / DECLINED / CANCELLED, NEW_MESSAGE (one unread
+  per room, upserted), REVIEW_REQUEST, INQUIRY_ANSWERED, NEW_FOLLOWER, ARTICLE_COMMENT,
+  DOCTOR_ANSWERED; WAIT/READ; group for tabs; pushed over the socket; `memberNotify` respected;
+  TTL 90 days; never fails the main action.
+- AI open items: Anthropic adapter unverified; OpenRouter demo model to be picked with eval:translate.
 
 ## Session handoff — where the last session stopped
 
 - `develop` is pushed and clean; `main` is still M0 (on purpose, see Open items). No feature
-  branches are left; M8 starts with `git checkout -b feature/community develop`.
+  branches are left except `feature/community` (M8a, until it is merged).
 - Work only in `~/Desktop/MedVia` — never in a git worktree. If the desktop app starts a session
   inside `.claude/worktrees/…`, its hook blocks the Write tool on the main folder; open the session
   in `~/Desktop/MedVia` instead.
@@ -65,7 +70,7 @@ AI-1 is merged. Open AI items:
 - Atlas Search: index `clinic_search` exists and is READY, with `clinicName`, `clinicNameKo`,
   `clinicDesc` and `clinicTreatmentNames` mapped; `.env` has `ATLAS_SEARCH_INDEX=clinic_search`.
   New mapped fields must be added by the user in Compass (Indexes → Search Indexes → Edit).
-- Last full runs (2026-10-09, AI-1 branch): Newman M0–AI-1 green (923 assertions), Jest 162/162,
+- Last full runs (2026-10-10, M8a branch): Newman M0–M8a green (1026 assertions), Jest 172/172,
   `npm run test:socket` 13/13,
   `npm run typecheck`, `lint:check`, `build` clean.
 - Merge routine the user expects after "commit qilib develop'ga merge qil": stage by name, read the
