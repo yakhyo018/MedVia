@@ -10,7 +10,9 @@ import { AuthMember, T } from '../../libs/types/common';
 import { shapeIntoMongoObjectId, toDisplayName } from '../../libs/config';
 import { ClinicService } from '../clinic/clinic.service';
 import { AiService } from '../ai/ai.service';
-import { ChatGateway } from './chat.gateway';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../../libs/enums/notification.enum';
 import {
 	bookingLine,
 	decodeCursor,
@@ -47,8 +49,9 @@ export class ChatService {
 		@InjectModel('ChatMessage') private readonly messageModel: Model<T>,
 		@InjectModel('Member') private readonly memberModel: Model<T>,
 		private readonly clinicService: ClinicService,
-		private readonly gateway: ChatGateway,
+		private readonly gateway: RealtimeGateway,
 		private readonly aiService: AiService,
+		private readonly notificationService: NotificationService,
 	) {}
 
 	/* ───────────────────────── patient ───────────────────────── */
@@ -136,11 +139,12 @@ export class ChatService {
 		await this.touchRoom(room, message, [otherUnread(viewer.side)]);
 
 		const plain = message.toObject();
-		this.gateway.emitMessage(room, 'message:new', plain);
+		this.gateway.emitToRoom(room, 'message:new', plain);
 		// Not awaited: the sender gets an answer now; the translation follows over the socket.
 		if (plain.messageTranslationStatus === TranslationStatus.PENDING) {
 			void this.translate(room, plain._id, target);
 		}
+		await this.notifyMessage(room, viewer.side, authMember._id, patient.memberFullName, text);
 		return this.present(plain, messageLang);
 	}
 
@@ -152,7 +156,8 @@ export class ChatService {
 			.findByIdAndUpdate(room._id, { $set: { [unreadOf(viewer.side)]: 0 } }, { new: true })
 			.lean()
 			.exec();
-		this.gateway.emitMessage(room, 'room:updated', updated);
+		this.gateway.emitToRoom(room, 'room:updated', updated);
+		await this.notificationService.markReadByRef(authMember._id, room._id);
 		const [view] = await this.roomsFor(viewer.side, { _id: room._id });
 		return view;
 	}
@@ -184,7 +189,7 @@ export class ChatService {
 				roomId: room._id,
 			});
 			await this.touchRoom(room, message, unreadForLine(actor));
-			this.gateway.emitMessage(room, 'message:new', message.toObject());
+			this.gateway.emitToRoom(room, 'message:new', message.toObject());
 		} catch (err: any) {
 			this.logger.warn(`booking line for ${String(booking._id)} not posted: ${err.message}`);
 		}
@@ -222,7 +227,32 @@ export class ChatService {
 			)
 			.lean()
 			.exec();
-		this.gateway.emitMessage(room, 'room:updated', updated);
+		this.gateway.emitToRoom(room, 'room:updated', updated);
+	}
+
+	/**
+	 * The bell of the other side: the clinic account hears "Feride K.", the patient hears the
+	 * clinic's name. One unread line per room — NotificationService upserts it and never throws.
+	 */
+	private async notifyMessage(
+		room: T,
+		side: SenderType,
+		senderId: ObjectId,
+		patientFullName: string,
+		text: string,
+	): Promise<void> {
+		const clinic = await this.clinicService.findClinicCard(room.clinicId);
+		const fromPatient = side === SenderType.PATIENT;
+		await this.notificationService.notify({
+			type: NotificationType.NEW_MESSAGE,
+			receiverId: fromPatient ? clinic?.memberId : room.memberId,
+			refId: room._id,
+			authorId: senderId,
+			params: {
+				senderName: fromPatient ? toDisplayName(patientFullName, true) : (clinic?.clinicName ?? ''),
+				preview: text,
+			},
+		});
 	}
 
 	/** Rooms of one side with their last message, clinic card and patient name, newest first. */
@@ -305,17 +335,18 @@ export class ChatService {
 		return room;
 	}
 
-	/** The patient of a room: the language the chat is translated into, and the AI consent. */
+	/** The patient of a room: the chat's target language, the AI consent, and the name for the bell. */
 	private async patientOf(
 		memberId: unknown,
-	): Promise<{ memberLang: Language; consented: boolean }> {
+	): Promise<{ memberLang: Language; consented: boolean; memberFullName: string }> {
 		const member = await this.memberModel
-			.findById(memberId, { memberLang: 1, memberAiConsentAt: 1 })
+			.findById(memberId, { memberLang: 1, memberAiConsentAt: 1, memberFullName: 1 })
 			.lean()
 			.exec();
 		return {
 			memberLang: (member?.memberLang as Language) ?? Language.EN,
 			consented: !!member?.memberAiConsentAt,
+			memberFullName: member?.memberFullName ?? '',
 		};
 	}
 
@@ -336,7 +367,7 @@ export class ChatService {
 				)
 				.lean()
 				.exec();
-			if (updated) this.gateway.emitMessage(room, 'message:translated', updated);
+			if (updated) this.gateway.emitToRoom(room, 'message:translated', updated);
 		} catch (err: any) {
 			this.logger.warn(`translation of ${String(messageId)} not stored: ${err.message}`);
 		}

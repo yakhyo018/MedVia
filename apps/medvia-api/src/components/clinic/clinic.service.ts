@@ -444,6 +444,11 @@ export class ClinicService implements OnModuleInit {
 		await this.invalidateClinic(clinicId);
 	}
 
+	/** Who to notify for a clinic, whatever its status: the account and the name on the line. */
+	public async findClinicCard(clinicId: unknown): Promise<T | null> {
+		return await this.clinicModel.findById(clinicId, { memberId: 1, clinicName: 1 }).lean().exec();
+	}
+
 	/** Used when a clinic account adds a doctor. */
 	public async findClinicByMember(memberId: ObjectId): Promise<Clinic | null> {
 		return (await this.clinicModel.findOne({ memberId }).lean().exec()) as Clinic | null;

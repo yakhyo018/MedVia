@@ -1,0 +1,33 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query N($input: NotificationsInquiry!) { getMyNotifications(input: $input) { list { _id notificationType notificationStatus notificationGroup notificationTitle notificationDesc notificationParamsJson notificationCount notificationRefId authorId receiverId } metaCounter { total } } }
+    variables: |-
+      { "input": { "page": 1, "limit": 50, "notificationGroup": "BOOKING" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const list = (gql.getMyNotifications || {}).list || [];
+      const env = (key) => pm.environment.get(key);
+      const one = (type, refKey) => list.find((n) => n.notificationType === type && n.notificationRefId === env(refKey)) || {};
+      const params = (n) => { try { return JSON.parse(n.notificationParamsJson || '{}'); } catch (e) { return {}; } };
+      const n = one('BOOKING_REQUESTED', 'bookingAId');
+      pm.test('BOOKING_REQUESTED, unread', () => pm.expect([n.notificationTitle, n.notificationStatus, n.notificationGroup]).to.eql(['New booking request', 'WAIT', 'BOOKING']));
+      pm.test('who, what, when (Seoul time)', () => pm.expect(n.notificationDesc).to.eql('Feride Karimova · Laser Toning ' + env('token') + ' · ' + env('slotDate') + ' 10:00 KST'));
+      pm.test('the author is Feride', () => pm.expect(n.authorId).to.eql(env('patientId')));
+      pm.test('params carry the pieces', () => pm.expect(params(n).treatmentName).to.eql('Laser Toning ' + env('token')));
+    language: text/javascript
+order: 22000

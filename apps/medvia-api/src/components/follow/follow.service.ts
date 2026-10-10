@@ -10,6 +10,8 @@ import { FOLLOWABLE_MEMBER_TYPES, MemberStatus, MemberType } from '../../libs/en
 import { T } from '../../libs/types/common';
 import { CacheKeys, shapeIntoMongoObjectId, toDisplayName } from '../../libs/config';
 import { CacheService } from '../../redis/cache.service';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../../libs/enums/notification.enum';
 
 const DUPLICATE_KEY = 11000;
 
@@ -30,6 +32,7 @@ export class FollowService {
 		@InjectModel('Clinic') private readonly clinicModel: Model<T>,
 		@InjectModel('Doctor') private readonly doctorModel: Model<T>,
 		private readonly cacheService: CacheService,
+		private readonly notificationService: NotificationService,
 	) {}
 
 	public async followMember(followerId: ObjectId, input: FollowInput): Promise<Follow> {
@@ -99,6 +102,7 @@ export class FollowService {
 				.exec();
 			await this.cacheService.del(CacheKeys.doctorDetail(doctor?._id));
 		}
+		await this.notifyFollowed(followerId, followingId);
 
 		return {
 			...follow,
@@ -250,6 +254,21 @@ export class FollowService {
 				: undefined,
 		}));
 		return data as Followings;
+	}
+
+	/** "Feride K. started following you." Only a follow that was created reaches here. */
+	private async notifyFollowed(followerId: ObjectId, followingId: unknown): Promise<void> {
+		const follower = await this.memberModel
+			.findById(followerId, { memberFullName: 1, memberType: 1 })
+			.lean()
+			.exec();
+		await this.notificationService.notify({
+			type: NotificationType.NEW_FOLLOWER,
+			receiverId: followingId,
+			refId: followerId,
+			authorId: followerId,
+			params: { followerName: follower ? this.toPublicMember(follower).memberDisplayName : '' },
+		});
 	}
 
 	private toPublicMember(member: T) {

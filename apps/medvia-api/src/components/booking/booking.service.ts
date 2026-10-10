@@ -29,6 +29,9 @@ import { ClinicService } from '../clinic/clinic.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ChatService } from '../chat/chat.service';
 import { AiService } from '../ai/ai.service';
+import { NotificationService } from '../notification/notification.service';
+import { seoulWhen } from '../notification/notification.rules';
+import { NotificationType } from '../../libs/enums/notification.enum';
 import { SlotService } from './slot.service';
 import {
 	actorOf,
@@ -94,11 +97,13 @@ export class BookingService {
 		@InjectModel('Booking') private readonly bookingModel: Model<T>,
 		@InjectModel('Doctor') private readonly doctorModel: Model<T>,
 		@InjectModel('Treatment') private readonly treatmentModel: Model<T>,
+		@InjectModel('Member') private readonly memberModel: Model<T>,
 		private readonly slotService: SlotService,
 		private readonly clinicService: ClinicService,
 		private readonly auditLogService: AuditLogService,
 		private readonly chatService: ChatService,
 		private readonly aiService: AiService,
+		private readonly notificationService: NotificationService,
 	) {}
 
 	/* ───────────────────────── patient ───────────────────────── */
@@ -171,6 +176,12 @@ export class BookingService {
 			}
 			// The request opens the patient's room with the clinic and says so in it.
 			await this.chatService.postBookingLine(
+				created,
+				BookingStatus.PENDING,
+				BookingActor.PATIENT,
+				treatment.treatmentName,
+			);
+			await this.notifyBooking(
 				created,
 				BookingStatus.PENDING,
 				BookingActor.PATIENT,
@@ -309,6 +320,13 @@ export class BookingService {
 			treatment?.treatmentName ?? '',
 			reason,
 		);
+		await this.notifyBooking(
+			updated as unknown as T,
+			to,
+			actor,
+			treatment?.treatmentName ?? '',
+			reason,
+		);
 
 		if (actor === BookingActor.ADMIN) {
 			await this.auditLogService.record({
@@ -361,6 +379,58 @@ export class BookingService {
 	}
 
 	/* ───────────────────────── helpers ───────────────────────── */
+
+	/**
+	 * The bell for a booking event, after it committed. A request is news for the clinic; a
+	 * confirm, decline or "how was your visit?" for the patient; a cancel for whoever did not
+	 * cancel (an admin's cancel for both). NotificationService never throws.
+	 */
+	private async notifyBooking(
+		booking: T,
+		status: BookingStatus,
+		actor: BookingActor,
+		treatmentName: string,
+		reason?: string,
+	): Promise<void> {
+		const clinic = await this.clinicService.findClinicCard(booking.clinicId);
+		const params: T = {
+			clinicName: clinic?.clinicName ?? '',
+			treatmentName,
+			when: seoulWhen(booking.bookingDate),
+			reason,
+		};
+		const toPatient = (type: NotificationType) =>
+			this.notificationService.notify({
+				type,
+				receiverId: booking.memberId,
+				refId: booking._id,
+				params,
+			});
+		const toClinic = async (type: NotificationType) => {
+			const patient = await this.memberModel
+				.findById(booking.memberId, { memberFullName: 1 })
+				.lean()
+				.exec();
+			await this.notificationService.notify({
+				type,
+				receiverId: clinic?.memberId,
+				refId: booking._id,
+				authorId: booking.memberId,
+				params: { ...params, patientName: patient?.memberFullName ?? '' },
+			});
+		};
+
+		if (status === BookingStatus.PENDING) return await toClinic(NotificationType.BOOKING_REQUESTED);
+		if (status === BookingStatus.CONFIRMED)
+			return await toPatient(NotificationType.BOOKING_CONFIRMED);
+		if (status === BookingStatus.DECLINED)
+			return await toPatient(NotificationType.BOOKING_DECLINED);
+		if (status === BookingStatus.COMPLETED) return await toPatient(NotificationType.REVIEW_REQUEST);
+		if (status === BookingStatus.CANCELLED) {
+			if (actor !== BookingActor.PATIENT) await toPatient(NotificationType.BOOKING_CANCELLED);
+			if (actor !== BookingActor.CLINIC) await toClinic(NotificationType.BOOKING_CANCELLED);
+		}
+	}
 
 	/** Lazy expiry: PENDING past its deadline becomes EXPIRED and lets go of its slots. */
 	private async expire(booking: T, now: Date): Promise<void> {

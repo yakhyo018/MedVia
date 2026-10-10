@@ -1,0 +1,34 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query N($input: NotificationsInquiry!) { getMyNotifications(input: $input) { list { _id notificationType notificationStatus notificationGroup notificationTitle notificationDesc notificationParamsJson notificationCount notificationRefId authorId receiverId } metaCounter { total } } }
+    variables: |-
+      { "input": { "page": 1, "limit": 50 } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const list = (gql.getMyNotifications || {}).list || [];
+      const env = (key) => pm.environment.get(key);
+      const one = (type, refKey) => list.find((n) => n.notificationType === type && n.notificationRefId === env(refKey)) || {};
+      const params = (n) => { try { return JSON.parse(n.notificationParamsJson || '{}'); } catch (e) { return {}; } };
+      pm.test('2 lines', () => pm.expect(list.length, JSON.stringify(list.map((n) => n.notificationType))).to.eql(2));
+      const confirmed = one('BOOKING_CONFIRMED', 'bookingAId');
+      const review = one('REVIEW_REQUEST', 'bookingAId');
+      pm.test('confirmed, with clinic, treatment and time', () => pm.expect(confirmed.notificationDesc).to.eql('Bell Test Clinic ' + env('stamp') + ' confirmed Laser Toning ' + env('token') + ' on ' + env('slotDate') + ' 10:00 KST.'));
+      pm.test('the review request is in the REVIEW tab', () => pm.expect([review.notificationTitle, review.notificationGroup]).to.eql(['How was your visit?', 'REVIEW']));
+      pm.test('newest first', () => pm.expect(list[0]._id).to.eql(review._id));
+    language: text/javascript
+order: 27000

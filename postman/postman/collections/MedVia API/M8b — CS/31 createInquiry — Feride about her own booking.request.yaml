@@ -1,0 +1,27 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation CI($input: InquiryInput!) { createInquiry(input: $input) { _id inquiryStatus inquiryLang inquiryReplyLang bookingId resolvedAt patientName bookingCode inquiryMessages { senderType text } } }
+    variables: |-
+      { "input": { "inquiryCategory": "BOOKING", "inquiryTitle": "Can I move my visit one hour later?", "inquiryContent": "Мой рейс задерживается. Можно перенести визит?", "inquiryLang": "RU", "bookingId": "{{bookingId}}" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const i = gql.createInquiry || {};
+      pm.test('NEW, reply language defaults to hers, booking linked', () => pm.expect([i.inquiryStatus, i.inquiryReplyLang, i.bookingId]).to.eql(['NEW', 'RU', pm.environment.get('bookingId')]));
+      pm.environment.set('inquiryId', i._id || '');
+    language: text/javascript
+order: 31000

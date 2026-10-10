@@ -1,0 +1,33 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query N($input: NotificationsInquiry!) { getMyNotifications(input: $input) { list { _id notificationType notificationStatus notificationGroup notificationTitle notificationDesc notificationParamsJson notificationCount notificationRefId authorId receiverId } metaCounter { total } } }
+    variables: |-
+      { "input": { "page": 1, "limit": 50, "notificationGroup": "BOOKING" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const list = (gql.getMyNotifications || {}).list || [];
+      const env = (key) => pm.environment.get(key);
+      const one = (type, refKey) => list.find((n) => n.notificationType === type && n.notificationRefId === env(refKey)) || {};
+      const params = (n) => { try { return JSON.parse(n.notificationParamsJson || '{}'); } catch (e) { return {}; } };
+      pm.test('6 lines', () => pm.expect(list.length, JSON.stringify(list.map((n) => n.notificationType))).to.eql(6));
+      pm.test('four requests', () => pm.expect(list.filter((n) => n.notificationType === 'BOOKING_REQUESTED').length).to.eql(4));
+      pm.test("Feride's cancel of C reaches the clinic", () => pm.expect(one('BOOKING_CANCELLED', 'bookingCId').notificationStatus).to.eql('WAIT'));
+      pm.test("the admin's cancel of D reaches the clinic too", () => pm.expect(one('BOOKING_CANCELLED', 'bookingDId').notificationStatus).to.eql('WAIT'));
+      pm.test('nothing for its own confirm, decline or completion', () => pm.expect(list.filter((n) => ['BOOKING_CONFIRMED', 'BOOKING_DECLINED', 'REVIEW_REQUEST'].includes(n.notificationType))).to.be.empty);
+    language: text/javascript
+order: 38000

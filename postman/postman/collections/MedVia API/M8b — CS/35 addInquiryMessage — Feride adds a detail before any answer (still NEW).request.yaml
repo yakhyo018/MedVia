@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation AM($input: InquiryMessageInput!) { addInquiryMessage(input: $input) { _id inquiryStatus inquiryLang inquiryReplyLang bookingId resolvedAt patientName bookingCode inquiryMessages { senderType text } } }
+    variables: |-
+      { "input": { "inquiryId": "{{inquiryId}}", "text": "Новый рейс в 13:00.", "lang": "RU" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('NEW', () => pm.expect((gql.addInquiryMessage || {}).inquiryStatus).to.eql('NEW'));
+    language: text/javascript
+order: 35000
