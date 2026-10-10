@@ -64,3 +64,11 @@ export const availableDoctorSorts = [
 
 /** The text of "Allow AI translation of my chat" a patient agreed to; bump when the text changes. */
 export const AI_CONSENT_VERSION = 'ai-translate-v1';
+
+/** Community list sorts. Whitelisted: a client-chosen sort field could order by anything. */
+export const availableArticleSorts = [
+	'createdAt',
+	'articleLikes',
+	'articleViews',
+	'articleComments',
+];

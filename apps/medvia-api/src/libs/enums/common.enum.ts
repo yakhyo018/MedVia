@@ -64,6 +64,10 @@ export enum Messages {
 	REVIEW_MESSAGE_REQUIRED = 'Please write a message to the patient!',
 	REVIEW_CHANGED = 'The patient changed this review while you were reading it, please reload!',
 	MODERATION_NOT_ALLOWED = 'This decision is not possible for the review in its current status!',
+
+	CATEGORY_NOT_ALLOWED = 'You cannot write in this board!',
+	CANNOT_REPORT_OWN = 'You cannot report your own post or comment!',
+	ALREADY_REPORTED = 'You have already reported this!',
 }
 
 export enum Direction {

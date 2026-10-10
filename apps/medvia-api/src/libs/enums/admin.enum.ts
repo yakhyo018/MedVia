@@ -18,6 +18,10 @@ export enum AuditAction {
 	REVIEW_APPROVE = 'REVIEW_APPROVE',
 	REVIEW_REQUEST_CHANGES = 'REVIEW_REQUEST_CHANGES',
 	REVIEW_HIDE = 'REVIEW_HIDE',
+	ARTICLE_HIDE = 'ARTICLE_HIDE',
+	ARTICLE_SHOW = 'ARTICLE_SHOW',
+	COMMENT_HIDE = 'COMMENT_HIDE',
+	COMMENT_SHOW = 'COMMENT_SHOW',
 }
 registerEnumType(AuditAction, { name: 'AuditAction' });
 
@@ -27,6 +31,8 @@ export enum AuditGroup {
 	TREATMENT = 'TREATMENT',
 	BOOKING = 'BOOKING',
 	REVIEW = 'REVIEW',
+	ARTICLE = 'ARTICLE',
+	COMMENT = 'COMMENT',
 }
 registerEnumType(AuditGroup, { name: 'AuditGroup' });
 

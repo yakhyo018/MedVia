@@ -59,7 +59,13 @@ export class ViewService {
 
 		const result = await this.viewModel
 			.aggregate([
-				{ $match: { memberId, viewHidden: { $ne: true } } },
+				{
+					$match: {
+						memberId,
+						viewHidden: { $ne: true },
+						viewGroup: { $in: [ViewGroup.CLINIC, ViewGroup.DOCTOR] },
+					},
+				},
 				{ $sort: { updatedAt: -1 } },
 				{
 					$lookup: {

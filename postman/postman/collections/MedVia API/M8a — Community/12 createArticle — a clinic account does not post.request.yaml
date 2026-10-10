@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation C($input: ArticleInput!) { createArticle(input: $input) { _id articleCategory articleStatus articleTitle articleAnswered articleLikes articleViews articleComments authorName authorType meLiked } }
+    variables: |-
+      { "input": { "articleCategory": "FREE", "articleTitle": "Where to exchange money near Gangnam? {{token}}", "articleContent": "Advertising our clinic here.", "articleLang": "RU" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test("refused: Allowed only for members with specific roles!", () => pm.expect(msg).to.include("Allowed only for members with specific roles!"));
+      pm.test('code FORBIDDEN', () => pm.expect(code).to.eql('FORBIDDEN'));
+    language: text/javascript
+order: 12000

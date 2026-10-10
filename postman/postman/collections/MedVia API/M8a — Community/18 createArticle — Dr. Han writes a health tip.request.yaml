@@ -1,0 +1,27 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{doctorToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation C($input: ArticleInput!) { createArticle(input: $input) { _id articleCategory articleStatus articleTitle articleAnswered articleLikes articleViews articleComments authorName authorType meLiked } }
+    variables: |-
+      { "input": { "articleCategory": "HEALTH_TIP", "articleTitle": "Protect your skin after a laser treatment {{token}}", "articleContent": "Use SPF 50 every day for two weeks and avoid saunas.", "articleLang": "KO" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const a = gql.createArticle || {};
+      pm.test('a doctor with the title and badge', () => pm.expect([a.authorName, a.authorType]).to.eql(['Dr. Han Seo-yeon', 'DOCTOR']));
+      pm.environment.set('tipId', a._id || '');
+    language: text/javascript
+order: 18000

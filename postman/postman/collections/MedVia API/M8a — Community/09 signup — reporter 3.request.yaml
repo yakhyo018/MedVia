@@ -1,0 +1,24 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation S($input: MemberInput!) { signup(input: $input) { accessToken } }
+    variables: |-
+      { "input": { "memberType": "USER", "memberEmail": "mrep3.{{stamp}}@medvia.test", "memberPassword": "Patient#2026", "memberFullName": "Reporter Number3", "memberLang": "EN", "termsAccepted": true } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.environment.set('reporter3Token', (gql.signup || {}).accessToken || '');
+    language: text/javascript
+order: 9000
