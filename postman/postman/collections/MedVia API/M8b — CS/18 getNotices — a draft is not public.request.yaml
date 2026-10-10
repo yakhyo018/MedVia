@@ -1,0 +1,24 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      query N($input: NoticesInquiry!) { getNotices(input: $input) { list { _id noticeCategory noticeStatus noticePinned noticeTitle noticeViews publishedAt displayTitle displayContent displayLang } } }
+    variables: |-
+      { "input": { "page": 1, "limit": 50, "noticeCategory": "NOTICE" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('absent', () => pm.expect(((gql.getNotices || {}).list || []).map((n) => n._id)).to.not.include(pm.environment.get('noticeAId')));
+    language: text/javascript
+order: 18000

@@ -14,6 +14,8 @@ import { ChatModule } from './chat/chat.module';
 import { BoardArticleModule } from './board-article/board-article.module';
 import { CommentModule } from './comment/comment.module';
 import { ReportModule } from './report/report.module';
+import { NoticeModule } from './notice/notice.module';
+import { InquiryModule } from './inquiry/inquiry.module';
 import { TestSupportModule, testSupportEnabled } from './test-support/test-support.module';
 
 @Module({
@@ -29,6 +31,8 @@ import { TestSupportModule, testSupportEnabled } from './test-support/test-suppo
 		BoardArticleModule,
 		CommentModule,
 		ReportModule,
+		NoticeModule,
+		InquiryModule,
 		FollowModule,
 		ViewModule,
 		AuditLogModule,

@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patient2Token}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query GI($id: String!) { getInquiry(inquiryId: $id) { _id inquiryStatus inquiryLang inquiryReplyLang bookingId resolvedAt patientName bookingCode inquiryMessages { senderType text } } }
+    variables: |-
+      { "id": "{{inquiryId}}" }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test("refused: No data is found!", () => pm.expect(msg).to.include("No data is found!"));
+      pm.test('code NOT_FOUND', () => pm.expect(code).to.eql('NOT_FOUND'));
+    language: text/javascript
+order: 32000

@@ -68,6 +68,10 @@ export enum Messages {
 	CATEGORY_NOT_ALLOWED = 'You cannot write in this board!',
 	CANNOT_REPORT_OWN = 'You cannot report your own post or comment!',
 	ALREADY_REPORTED = 'You have already reported this!',
+
+	NOTICE_FAQ_CATEGORY = 'An FAQ needs its tab, and a notice has none!',
+	INQUIRY_CLOSED = 'This inquiry is resolved — please send a new one!',
+	INQUIRY_THREAD_FULL = 'This conversation is too long — please send a new inquiry!',
 }
 
 export enum Direction {

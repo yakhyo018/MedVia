@@ -1,0 +1,26 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query GI($id: String!) { getInquiry(inquiryId: $id) { _id inquiryStatus inquiryLang inquiryReplyLang bookingId resolvedAt patientName bookingCode inquiryMessages { senderType text } } }
+    variables: |-
+      { "id": "{{inquiryId}}" }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const i = gql.getInquiry || {};
+      pm.test('name and booking code', () => pm.expect([i.patientName, i.bookingCode]).to.eql(['Feride Karimova', pm.environment.get('bookingCode')]));
+    language: text/javascript
+order: 33000
