@@ -15,7 +15,9 @@ import { MemberType } from '../../libs/enums/member.enum';
 import { AuthMember, T } from '../../libs/types/common';
 import { shapeIntoMongoObjectId } from '../../libs/config';
 import { BoardArticleService, lookupAuthor } from '../board-article/board-article.service';
-import { authorName } from '../board-article/community.rules';
+import { answersQuestion, authorName } from '../board-article/community.rules';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../../libs/enums/notification.enum';
 
 /**
  * Flat comments on community posts. The post must be ACTIVE, and the comment, the post's
@@ -28,6 +30,7 @@ export class CommentService {
 		@InjectModel('Comment') private readonly commentModel: Model<T>,
 		@InjectConnection() private readonly connection: Connection,
 		private readonly articleService: BoardArticleService,
+		private readonly notificationService: NotificationService,
 	) {}
 
 	/** A doctor's comment on a question is its answer: the post gets "Doctor answered". */
@@ -53,7 +56,9 @@ export class CommentService {
 			await this.articleService.statsEditor(article._id, 'articleComments', 1, session);
 			await this.recomputeAnswered(article, session);
 		});
-		return (await this.findWithAuthor({ _id: created._id }))!;
+		const comment = (await this.findWithAuthor({ _id: created._id }))!;
+		await this.notifyAuthor(article, authMember, comment.authorName ?? '');
+		return comment;
 	}
 
 	public async updateComment(authMember: AuthMember, input: CommentUpdate): Promise<Comment> {
@@ -193,6 +198,28 @@ export class CommentService {
 			.session(session)
 			.exec();
 		await this.articleService.setAnswered(post._id, !!answered, session);
+	}
+
+	/**
+	 * The post's author hears about it after the transaction committed — a rolled-back comment
+	 * never rings a bell. A doctor's comment on a question is "A doctor answered".
+	 */
+	private async notifyAuthor(
+		article: T,
+		commenter: AuthMember,
+		commenterName: string,
+	): Promise<void> {
+		const answer = answersQuestion(article.articleCategory, commenter.memberType);
+		await this.notificationService.notify({
+			type: answer ? NotificationType.DOCTOR_ANSWERED : NotificationType.ARTICLE_COMMENT,
+			receiverId: article.memberId,
+			refId: article._id,
+			authorId: commenter._id,
+			params: {
+				[answer ? 'doctorName' : 'commenterName']: commenterName,
+				articleTitle: article.articleTitle,
+			},
+		});
 	}
 
 	private async findWithAuthor(match: T): Promise<Comment | null> {

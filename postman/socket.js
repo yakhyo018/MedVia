@@ -5,7 +5,8 @@
  *
  * Builds its own clinic and two patients, then checks: a socket without a valid token is
  * refused; a message sent through GraphQL reaches both sides of its room over the socket and
- * nobody else; "unread" moves for the other side.
+ * nobody else; "unread" moves for the other side; the other side's bell (notification:new)
+ * rings on its own member room.
  */
 const fs = require('fs');
 const path = require('path');
@@ -35,7 +36,7 @@ async function gql(query, variables = {}, token) {
 
 function connect(token) {
 	return new Promise((resolve) => {
-		const socket = io(`${BASE}/chat`, { auth: token ? { token } : {}, transports: ['websocket'], reconnection: false });
+		const socket = io(`${BASE}/live`, { auth: token ? { token } : {}, transports: ['websocket'], reconnection: false });
 		socket.on('connect', () => resolve({ socket }));
 		socket.on('connect_error', (err) => resolve({ error: err.message, socket }));
 	});
@@ -96,7 +97,7 @@ async function setup() {
 }
 
 async function main() {
-	console.log(`chat socket → ${BASE}/chat`);
+	console.log(`live socket → ${BASE}/live`);
 	if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD) throw new Error('ADMIN_EMAIL / ADMIN_PASSWORD missing in .env');
 	const t = await setup();
 
@@ -116,25 +117,43 @@ async function main() {
 	// Feride writes: the clinic and Feride hear it, Yahyo does not.
 	const text = `Здравствуйте! ${stamp}`;
 	const hears = (s) => waitFor(s, 'message:new', (m) => m.messageText === text);
-	const [atClinic, atFeride, atYahyo, sent] = await Promise.all([
+	const isChatLine = (n) => n && n.notificationType === 'NEW_MESSAGE' && n.notificationRefId === room._id;
+	const [atClinic, atFeride, atYahyo, clinicBell, ferideBell, sent] = await Promise.all([
 		hears(clinic.socket),
 		hears(feride.socket),
 		hears(yahyo.socket, 1500),
+		waitFor(clinic.socket, 'notification:new', isChatLine),
+		waitFor(feride.socket, 'notification:new', isChatLine, 1500),
 		gql('mutation M($input: MessageSendInput!) { sendMessage(input: $input) { _id messageLang } }', { input: { roomId: room._id, messageText: text } }, t.feride),
 	]);
 	check('the clinic receives Feride\'s message over the socket', atClinic && atClinic._id === sent.sendMessage._id);
 	check('Feride\'s other tabs receive it too', !!atFeride);
 	check('Yahyo, a patient of another room, receives nothing', atYahyo === null);
 	check('it is stored in Feride\'s language (RU)', sent.sendMessage.messageLang === 'RU', sent.sendMessage.messageLang);
+	check(
+		'the clinic\'s bell rings: "New message from Feride K."',
+		!!clinicBell && clinicBell.notificationTitle === 'New message from Feride K.',
+		clinicBell ? clinicBell.notificationTitle : 'no notification:new',
+	);
+	check('the sender\'s own bell stays silent', ferideBell === null);
 
 	// The clinic answers: Feride's unread goes up, then to 0 when she reads.
 	const unread = waitFor(feride.socket, 'room:updated', (r) => r && r._id === room._id && r.roomUnreadPatient === 1);
+	const answerBell = waitFor(feride.socket, 'notification:new', isChatLine);
 	await gql('mutation M($input: MessageSendInput!) { sendMessage(input: $input) { _id } }', { input: { roomId: room._id, messageText: '네, 내일 14시에 가능합니다.' } }, t.clinicToken);
 	check('the clinic\'s answer is unread for Feride', !!(await unread));
+	const bell = await answerBell;
+	check(
+		'Feride\'s bell rings with the clinic\'s name and the preview',
+		!!bell && bell.notificationTitle === `New message from Socket Test Clinic ${stamp}` && bell.notificationDesc === '네, 내일 14시에 가능합니다.',
+		bell ? `${bell.notificationTitle} · ${bell.notificationDesc}` : 'no notification:new',
+	);
 
 	const read = waitFor(clinic.socket, 'room:updated', (r) => r && r._id === room._id && r.roomUnreadPatient === 0);
 	await gql('mutation R($id: String!) { markRoomRead(roomId: $id) { unread } }', { id: room._id }, t.feride);
 	check('reading resets it, and the clinic\'s screen hears that', !!(await read));
+	const badge = (await gql('query { getUnreadNotificationCount }', {}, t.feride)).getUnreadNotificationCount;
+	check('reading the room also reads its bell line (badge 0)', badge === 0, `badge ${badge}`);
 
 	// AI-1 (needs AI_PROVIDER=fake): with consent, the translation follows as message:translated.
 	await gql('mutation C { setAiConsent(agreed: true) { memberAiConsentAt } }', {}, t.feride);

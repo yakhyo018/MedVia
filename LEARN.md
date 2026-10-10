@@ -1985,3 +1985,171 @@ Only when the copied value can change. A member's type never does, so the copy c
 **6. How did adding likes to posts take almost no code?**
 
 The like module is a registry: a target registers how to check it, move its counter and count it. Posts registered an `ARTICLE` handler; the existing `likeTarget` mutation, its race handling and its tests work unchanged.
+
+## M8b — CS (notices, FAQ, 1:1 inquiries)
+
+### 1. Two different conversations: the clinic chat and the help desk
+
+The clinic chat (M7) is patient ↔ clinic about a treatment. Some questions are for MedVia itself:
+"the clinic does not answer", "delete my medical data", "I need an interpreter". Those go to a
+1:1 inquiry — a ticket the MedVia team (ADMIN) answers. Mixing them would put the platform into
+every clinic conversation, or the clinic into complaints about itself.
+
+### 2. Notices and FAQ: one collection, translated by hand
+
+A notice and an FAQ answer have the same shape (title, content, status, translations), so they
+share `notices`, told apart by `noticeCategory`; an FAQ must carry its tab
+(`noticeFaqCategory`) and a notice must not — `checkNoticeShape`. The team writes English and
+adds translations by hand (`noticeTranslations[]`): official text — a holiday closure, the privacy
+policy — is not left to a model. `localizeNotice` returns the reader's language (their
+`memberLang`, or a guest's `lang`) **or English, never half and half**: title and content always
+come from the same translation.
+
+- **Drafts.** `HOLD` is invisible to the public; `getNotice` on a draft is a 404, not a 403 — no
+  hint that it exists.
+- **The date on the list** is the first publication (`publishedAtFor`): moving a notice back to
+  draft and republishing it keeps its original date.
+- **Pinned first** — `{ noticePinned: -1, publishedAt: -1 }`, served by one compound index.
+
+### 3. The ticket life cycle is a table
+
+`INQUIRY_MOVES` maps status → sender → next status: the team's message answers (→ ANSWERED); the
+patient's follow-up after an answer puts the ticket back in the team's queue (→ IN_PROGRESS);
+RESOLVED is final. As in M5, the table is the documentation and the Jest test walks it. Every move
+is a `findOneAndUpdate` **conditional on the status read**: two admins answering at once cannot
+both move the same ticket from the same state.
+
+### 4. The 50-message cap without a race
+
+The thread is an embedded array — a ticket is small and always read whole. An unbounded array can
+grow a document towards MongoDB's 16 MB limit, so it is capped at 50. "Read the length, then push"
+is a race: two messages read 49 and both push. Instead the condition is in the filter:
+`{ 'inquiryMessages.49': { $exists: false } }` — "the 50th slot is still empty" — and the push is
+in the same atomic update. When the update matches nothing, one extra `exists` tells the two
+reasons apart (thread full vs status moved).
+
+### 5. Scope by the token
+
+A patient's ticket list and detail are filtered by `memberId` from the token; another patient's id
+is a 404. A related booking must be the patient's own (`BookingService` scope), so a ticket can
+never reveal someone else's booking code to the team as if it were theirs.
+
+### 6. What the tests proved
+
+| Broken on purpose | Caught by |
+| --- | --- |
+| the patient scope removed from `findScoped` | Postman "Yahyo cannot open Feride's ticket" |
+| the cap filter removed from the push | Postman "the 51st is refused" (the fill loop) |
+
+Also covered, not mutation-checked: drafts are not public (Postman), title and content always
+from one translation (Jest `localizeNotice`), the `INQUIRY_MOVES` table walk (Jest).
+
+### Interview questions and answers
+
+**1. How do you cap an embedded array safely under concurrency?**
+
+Put the cap in the update's filter — `'arr.49': { $exists: false }` — and push in the same `findOneAndUpdate`. MongoDB applies filter and update atomically per document, so two writers cannot both take the last slot. Counting first and pushing second is a race.
+
+**2. Why an embedded thread here, but a separate collection for chat messages?**
+
+A ticket has a few messages, is always read whole and is capped. A chat room grows without bound and is read page by page with a cursor — a separate collection with an index.
+
+**3. Why are notice translations hand-entered instead of machine-translated?**
+
+They are official statements (closures, policies). A wrong machine translation of a privacy policy is a legal problem; the team controls the text and English is the fallback.
+
+**4. Why is a draft notice a 404 rather than a 403?**
+
+A 403 confirms the id exists. Treating "not visible to you" as "not found" leaks nothing.
+
+## M8c — Notifications (the bell) and one realtime gateway
+
+### 1. Who tells whom — events, not a feed
+
+Each module that changes something calls `NotificationService.notify()` after its own write has
+committed: booking (request → clinic; confirm, decline, "how was your visit?" → patient; a cancel →
+whoever did not cancel, an admin's cancel → both), chat (the other side), follow (the followed),
+comment (the post's author; a doctor on a question → "A doctor answered"), inquiry (the team's
+answer → the patient). Notification imports none of them, so there is no cycle:
+`booking/chat/follow/comment/inquiry → notification → realtime`.
+
+### 2. A notification never breaks the action
+
+`notify()` catches everything and logs it. A booking that committed must not answer "error"
+because its bell could not be written — the patient would retry and double-book. The same rule as
+M7's booking lines and AI-1's translations: side effects are best-effort, the main write is the
+truth. The trade-off: a lost notification is only logged (a queue with retries is M9 work).
+
+### 3. Rules as pure functions
+
+`notification.rules.ts`: `GROUP_OF` (the tab of each type), `SETTING_OF` (which member switch
+silences a type — booking updates, chat messages; an answer from support has no switch: it is
+never optional), `allowedBySettings` (a missing setting means on), `seoulWhen` (UTC stored,
+"2026-10-13 10:00 KST" shown), `renderNotification` (the English line; a missing param renders as
+empty — the text never throws). The service adds the checks that need the database: not to
+oneself, not to a closed account.
+
+### 4. One unread chat line per room — an upsert guarded by a partial unique index
+
+Ten messages must not mean ten bell lines. The chat line is `findOneAndUpdate(..., { upsert: true })`
+on `{ receiverId, NEW_MESSAGE, refId: roomId, status: WAIT }`, with `$inc: { notificationCount: 1 }`
+and the latest preview. Two first messages at the same moment can both decide to insert; the
+**partial unique index** `{ receiverId, notificationRefId }` where `type = NEW_MESSAGE and
+status = WAIT` refuses the second insert, which retries as a plain update. The index is partial
+because READ lines are history: after the clinic opens the room (`markRoomRead` →
+`markReadByRef`), the next message starts a new WAIT line at count 1.
+
+### 5. Params, not only text
+
+The stored title is English, but `notificationParams` keeps the pieces (clinic name, treatment,
+time, preview) and the API exposes them as `notificationParamsJson`. A Russian frontend renders
+"Клиника подтвердила…" from type + params without the server knowing every language.
+
+### 6. Retention: TTL index
+
+Notifications are not history. A TTL index on `updatedAt` (90 days, `NOTIFICATION_TTL_SECONDS`)
+lets MongoDB's background monitor delete old lines — no cron job. `updatedAt`, not `createdAt`,
+because a chat line is refreshed in place.
+
+### 7. One socket: `RealtimeGateway` on `/live`
+
+The chat gateway became a shared module. Every member joins `member:<id>`; a clinic account also
+joins `clinic:<id>` (all tabs of the team). Chat pushes with `emitToRoom`, the bell with
+`emitToMember(id, 'notification:new', …)`. One connection per browser tab instead of two, one
+handshake auth, one expiry cut. The gateway reads the Clinic **model**, not ClinicModule: clinic →
+follow → notification → realtime → ClinicModule would be a cycle.
+
+### 8. What the tests proved
+
+Postman `M8c — Notifications` (84 requests, 148 assertions) and `npm run test:socket` (17 checks,
+incl. `notification:new` on the right socket and the badge back to 0 after reading the room).
+Mutation checks — each guard removed, the suite run, the guard restored:
+
+| Broken on purpose | Caught by |
+| --- | --- |
+| the self-notify guard | "2 lines — her own comment rang nothing" + every badge count after it (7 assertions) |
+| the switch check | "the switch silenced it" |
+| the chat upsert (plain insert) | "count 2, unread" — the partial unique index refused the second line |
+| `markReadByRef` in `markRoomRead` | "reading the room read its line" + the next-line checks |
+
+### Interview questions and answers
+
+**1. Why does `notify()` swallow its errors?**
+
+Because it runs after the real action committed. If it threw, the client would see an error for a booking that exists and retry it. Side effects are best-effort and logged; the main write is the source of truth. A durable outbox or queue is the next step when "best-effort" is not enough.
+
+**2. How do you keep one unread line per chat room under concurrency?**
+
+An upsert on the line's natural key plus a partial unique index on that key for WAIT lines only. If two upserts both insert, the index rejects one with a duplicate-key error, and that one retries as an update. Partial, because READ lines may repeat.
+
+**3. Why a TTL index instead of a cleanup cron?**
+
+MongoDB deletes expired documents itself, once a minute, with no job to schedule, monitor or forget. It works for "delete after N seconds since a date field" — exactly this case.
+
+**4. Why store params next to the rendered English text?**
+
+The server stays language-agnostic: the frontend renders the line in the reader's language from the type and the params, while API clients and the Postman suite still get readable English.
+
+**5. Why one socket gateway for chat and notifications?**
+
+One connection, one handshake auth and one expiry rule per client; per-member audiences make both features a plain `emit` to a room. Two gateways would double the connections and duplicate the auth.

@@ -15,6 +15,8 @@ import { MemberType } from '../../libs/enums/member.enum';
 import { AuthMember, T } from '../../libs/types/common';
 import { shapeIntoMongoObjectId } from '../../libs/config';
 import { BookingService } from '../booking/booking.service';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../../libs/enums/notification.enum';
 import {
 	checkCanResolve,
 	nextStatusOnMessage,
@@ -61,6 +63,7 @@ export class InquiryService {
 	constructor(
 		@InjectModel('Inquiry') private readonly inquiryModel: Model<T>,
 		private readonly bookingService: BookingService,
+		private readonly notificationService: NotificationService,
 	) {}
 
 	/* ───────────────────────── patient ───────────────────────── */
@@ -134,6 +137,16 @@ export class InquiryService {
 				.exists({ _id: current._id, ...threadHasRoom() })
 				.exec();
 			throw new BadRequestException(hasRoom ? Messages.WRONG_STATUS : Messages.INQUIRY_THREAD_FULL);
+		}
+		// The team's reply is news for the patient; the patient's own message is not.
+		if (sender === InquirySender.ADMIN) {
+			await this.notificationService.notify({
+				type: NotificationType.INQUIRY_ANSWERED,
+				receiverId: updated.memberId,
+				refId: updated._id,
+				authorId: authMember._id,
+				params: { inquiryTitle: updated.inquiryTitle },
+			});
 		}
 		return updated as unknown as Inquiry;
 	}

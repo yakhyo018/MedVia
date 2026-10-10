@@ -232,3 +232,31 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | `articleAnswered` recomputed from ACTIVE doctor comments; `commentAuthorType` stored on the comment. | Derived data that heals; the copied value never changes. | One `exists` query per comment change. | Flip the flag on create. |
 | Reports: unique per member and target; 5 pending hide the target in the same transaction; the admin's HIDE/SHOW closes pending reports, resets the counter, is audited. | Distinct people, fast brake, human decision; the counter means pending. | A coordinated group of 5 can hide a post until the admin acts. | Admin-only; no counter reset. |
 | Likes through the M3.1 registry (`ARTICLE` handler); views deduplicated per member; Recently Visited filtered to clinics and doctors. | No new mutation; posts are not "visits". | — | A `likeArticle` mutation (Nestar). |
+
+## M8b — CS
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| Notices and FAQ in one `notices` collection, told apart by `noticeCategory`; an FAQ needs `noticeFaqCategory`, a notice must not have one. | Same shape, same admin screens. | — | Two collections. |
+| English base text + hand-entered `noticeTranslations[]`; reader gets `memberLang` / guest `lang` or English, never a half. | Official text is not machine-translated. | Untranslated notices show in English. | AI translation (AI-1). |
+| `HOLD` drafts are not public (404); `publishedAt` set at the first publication only; pinned first. | Matches the mockup; the date does not jump on edits. | — | `updatedAt` as the date. |
+| 1:1 inquiries, patient ↔ ADMIN; clinics are not in them. | Questions about the platform, or about a clinic. | The team must staff it. | Route everything through the clinic chat. |
+| `INQUIRY_MOVES` table; every move conditional on the status read; RESOLVED final. | Testable life cycle; no lost updates between two admins. | — | Free status updates. |
+| Thread embedded, capped at 50 with `inquiryMessages.49: { $exists: false }` in the filter of the push. | Small, read whole; the cap is atomic. | Long tickets must be resolved and reopened as new. | A messages collection; count-then-push. |
+| A related booking must be the patient's own (`BookingService` scope). | No foreign booking code in a ticket. | — | Trust the id. |
+
+## M8c — Notifications
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| Types limited to events the platform produces today: 4 booking, REVIEW_REQUEST, NEW_MESSAGE, INQUIRY_ANSWERED, NEW_FOLLOWER, ARTICLE_COMMENT, DOCTOR_ANSWERED. | No visit reminder (M9), no likes (noise), no fan-out to followers (a write per follower — M9). | — | The ER model's full list. |
+| `notify()` called after the action committed, never throws; notification imports none of the callers. | The action is the truth; no module cycle. | A lost line is only logged. | Throw; an event bus; an outbox (M9). |
+| Rules as pure functions (`GROUP_OF`, `SETTING_OF`, `allowedBySettings`, `seoulWhen`, `renderNotification`) with Jest. | Testable without a database. | — | Logic inside the service. |
+| Member switches: `bookingUpdates` (booking + review request), `chatMessages`; inquiry answers, followers and comments always delivered; missing setting = on. | The mockup's settings; support answers are not optional. | — | A switch per type. |
+| Never to oneself, never to a non-ACTIVE account. | Own actions are not news; closed accounts get nothing. | — | — |
+| NEW_MESSAGE: one WAIT line per room and receiver, upserted with `notificationCount` and the latest preview; partial unique index as the race guard; read by `markRoomRead`. | Ten messages are one line; two first messages stay one line. | — | A line per message. |
+| English title/desc stored + `notificationParams` (exposed as `notificationParamsJson`). | Readable for API clients; the frontend can localise from type + params. | The JSON is untyped for clients. | Text only; params only. |
+| A patient appears as "Feride K." (chat, follower, comment); the clinic sees the full name on a booking request. | The same display-name rule as the chat and the community; the clinic already has the full name on the booking. | — | Full names everywhere. |
+| TTL index on `updatedAt`, 90 days (`NOTIFICATION_TTL_SECONDS`). | Not history; no cleanup job. | — | Keep forever; a cron. |
+| `RealtimeGateway` (`/live`) replaces the chat gateway: `member:<id>` for every member, `clinic:<id>` for clinic accounts; doctors and admins may connect. | One socket for chat and the bell; one auth. | Clients must move from `/chat` to `/live`. | A second gateway. |
+| Badge = `countDocuments({ receiverId, WAIT })` on an index; mark-read by ids or all, always filtered by the token's member. | Simple and exact at this scale; another member's ids change nothing. | A count per page load. | A counter field on the member. |

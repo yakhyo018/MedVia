@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { FollowService } from './follow.service';
 import { FollowResolver } from './follow.resolver';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationModule } from '../notification/notification.module';
 import FollowSchema from '../../schemas/Follow.model';
 import MemberSchema from '../../schemas/Member.model';
 import ClinicSchema from '../../schemas/Clinic.model';
@@ -19,6 +20,8 @@ import DoctorSchema from '../../schemas/Doctor.model';
 			{ name: 'Doctor', schema: DoctorSchema },
 		]),
 		AuthModule,
+		// follow → notification → realtime: none of them imports follow back.
+		NotificationModule,
 	],
 	providers: [FollowService, FollowResolver],
 	exports: [FollowService],

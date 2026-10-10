@@ -16,6 +16,8 @@ import { CommentModule } from './comment/comment.module';
 import { ReportModule } from './report/report.module';
 import { NoticeModule } from './notice/notice.module';
 import { InquiryModule } from './inquiry/inquiry.module';
+import { NotificationModule } from './notification/notification.module';
+import { RealtimeModule } from './realtime/realtime.module';
 import { TestSupportModule, testSupportEnabled } from './test-support/test-support.module';
 
 @Module({
@@ -33,6 +35,8 @@ import { TestSupportModule, testSupportEnabled } from './test-support/test-suppo
 		ReportModule,
 		NoticeModule,
 		InquiryModule,
+		NotificationModule,
+		RealtimeModule,
 		FollowModule,
 		ViewModule,
 		AuditLogModule,

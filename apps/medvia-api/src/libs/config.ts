@@ -72,3 +72,6 @@ export const availableArticleSorts = [
 	'articleViews',
 	'articleComments',
 ];
+
+/** Notifications are kept 90 days after their last activity, then the TTL index removes them. */
+export const NOTIFICATION_TTL_SECONDS = 90 * 24 * 60 * 60;

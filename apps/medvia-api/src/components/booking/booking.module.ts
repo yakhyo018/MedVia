@@ -13,6 +13,8 @@ import SlotSchema from '../../schemas/Slot.model';
 import BookingSchema from '../../schemas/Booking.model';
 import TreatmentSchema from '../../schemas/Treatment.model';
 import DoctorSchema from '../../schemas/Doctor.model';
+import MemberSchema from '../../schemas/Member.model';
+import { NotificationModule } from '../notification/notification.module';
 
 /**
  * booking → clinic, chat (the booking lines in the patient's room). The Treatment and Doctor
@@ -26,12 +28,14 @@ import DoctorSchema from '../../schemas/Doctor.model';
 			{ name: 'Booking', schema: BookingSchema },
 			{ name: 'Treatment', schema: TreatmentSchema },
 			{ name: 'Doctor', schema: DoctorSchema },
+			{ name: 'Member', schema: MemberSchema },
 		]),
 		AuthModule,
 		ClinicModule,
 		AuditLogModule,
 		ChatModule,
 		AiModule,
+		NotificationModule,
 	],
 	providers: [SlotResolver, SlotService, BookingResolver, BookingService],
 	exports: [BookingService],
