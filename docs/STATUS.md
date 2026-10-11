@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-11 — M9 built and green on `feature/batch`; waiting for the user's Postman run._
+_Last updated: 2026-10-11 — M9 closed (merged `f0806ba`). Next: M10 — Admin + audit log + faker seed._
 
 ## The project
 
@@ -11,7 +11,7 @@ MedVia — portfolio project for Korean healthtech job applications. Foreign pat
 find verified Seoul clinics and book treatments in their own language. Not a business: no SMS, no
 outgoing email, no payments, no HIRA. The sample patient persona is **Feride Karimova**.
 
-- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M8 + AI-1
+- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M9 + AI-1
 - Design and data model: `~/Desktop/MedVia-design` — ER source `er/model.js`, mockup generators `source/`
 - ER model (24 collections): https://claude.ai/artifact/LiWJjgdBPcaLSjdGkefKcA
 - Clickable prototype (61 screens): https://claude.ai/artifact/Js6b1j85jbvBrxCSpNRiWt
@@ -33,48 +33,29 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M7 | Chat — socket.io rooms | ✅ done, merged (`9fb3323`) |
 | AI-1 | Translator — chat translation + questionnaire KO summary | ✅ done, merged (`f6df81d`) — Anthropic adapter unverified |
 | M8 | Community + CS + Notification — split into M8a / M8b / M8c | ✅ done — M8a merged (`4f598e4`), M8b + M8c merged (`8214884`) |
-| **M9** | **Batch — BullMQ delayed jobs** | **next** |
-| M10 | Admin + audit log + faker seed | |
+| M9 | Batch — BullMQ delayed jobs + nightly recount / rank | ✅ done, merged (`f0806ba`) |
+| **M10** | **Admin + audit log + faker seed** | **next** |
 | AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
 
-## Next step: the user runs M9 in Postman, then commit + merge
+## Next step: M10 — Admin + audit log + faker seed (collection review first)
 
-M9 is built on `feature/batch` (nothing committed). Both apps must run for the M9 folder:
-`npm run start:dev` (API, :3000) and `npm run start:dev:batch` (batch, :3001; `batchUrl` in the
-Postman environment, `BATCH_URL` overrides it for Newman).
+M9 is closed. M10 starts with the collection review gate. Inputs already waiting for it:
+`auditLogs` (written since M2, read by `getAuditLogsByAdmin`), `batchLogs` (M9 — an admin screen
+for the last runs), the admin's member / clinic / review queues, and a faker seed for a demo
+database (sample personas: Yahyo Choriyev, Feride Karimova).
 
-### Built
-- **API queue** (`components/booking/booking.jobs.ts`, `booking.processor.ts`): `bullmq@6` +
-  `@nestjs/bullmq`, keys under `queue:`. `expire-<id>` delayed to respondDeadline on request,
-  `remind-<id>` a day before the visit on confirm; fire-and-forget producer. Sweeps as job
-  schedulers (expiry 5 min, reminders 1 h). Worker inside the API calls
-  `BookingService.expireDue/remindDue` (conditional writes; reminder = claim then send).
-- Notifications `BOOKING_EXPIRED` (bookingUpdates) and `VISIT_REMINDER` (visitReminders).
-  `Booking.bookingRemindedAt`; a confirm inside the last day counts as the reminder.
-- **Batch** (`apps/medvia-batch`): `SLOT_RELEASE` (*/5), `RECOUNT` (02:30), `RANK` (03:00), Seoul
-  time; `batchLogs` (TTL 30 days, no overlapping runs); cache cleared with SCAN + UNLINK.
-  `clinicScore` / `doctorScore` + "Recommended" sort (`rank.rules.ts`, Bayesian m = 5).
-- Test support: `devPromoteJob`, `devRunSweep(name, times)`, `devExpireHolds`, `devDriftClinic`;
-  batch `POST /dev/run/:name`. `testSupportEnabled` moved to `libs/config.ts`.
-- Postman **`M9 — Batch`** (order 13000, 82 requests, 143 assertions) from
-  `postman/generators/gen-m9.js`. Mutation checks: 8 mutants, all killed (two only by the
-  concurrent sweeps). LEARN.md and DECISIONS.md written.
+### What M9 left behind
+- Running locally needs both apps: `npm run start:dev` (API :3000) and `npm run start:dev:batch`
+  (batch :3001, `batchUrl` in Postman; `BATCH_URL` overrides it for Newman).
+- The first RECOUNT on the dev database fixed 77 clinics and 22 doctors (pre-M6 rows without
+  rating / treatment-name fields); later runs fix 0.
+- Every folder's admin login (but M1's) reuses a still-valid admin token —
+  `postman/generators/reuse-admin.js`; a one-shot `npm run test:api` is green (1374 assertions).
+- `postman/generators/` is still untracked (gen-m8a/b/c carry absolute paths; gen-m9 and
+  reuse-admin are relative). Decide: commit with relative paths, or delete.
 - `.claude/launch.json` (untracked) starts the batch from the desktop app's preview.
-
-- Last runs (2026-10-11): every folder green run one by one (**1398** assertions, M0–M9),
-  `test:socket` 17/17, Jest 199/199, typecheck, `lint:check`, `build` clean.
-- **Login throttle in a full run — fixed (2026-10-11).** The limit is 5 sign-ins per minute per
-  IP + email (since M1); every folder signed in as the same admin, and a fast run did 6 in one
-  minute (M6 failed, then M7 onwards as the key stayed blocked). Every folder's
-  `login — admin` but M1's now reuses a still-valid admin token (≥ 5 min left, role ADMIN) and
-  skips the request (`postman/generators/reuse-admin.js`). One-shot `npm run test:api` green:
-  795 requests, 1374 assertions (the skipped logins' own tests do not run).
-
-### Left
-1. The user runs `M9 — Batch` in Postman (both apps running).
-2. Commit (stage by name; not `apps/medvia-batch/image/`, not `.claude/`), merge `--no-ff` into
-   `develop`, close M9 in the table, push, delete the branch.
-3. Next milestone: M10 — Admin + audit log + faker seed (collection review first).
+- Last runs (2026-10-11): Newman M0–M9 green, `test:socket` 17/17, Jest 199/199, typecheck,
+  `lint:check`, `build` clean.
 
 ### What M8c left behind
 - Socket namespace is **`/live`** (was `/chat`) — the frontend must connect there.
