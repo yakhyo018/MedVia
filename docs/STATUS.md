@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-11 — AI-2 built and green on `feature/assistant`; waiting for the user's Postman run._
+_Last updated: 2026-10-11 — AI-2 closed (merged `623d9c6`). Every planned milestone is done; next: the production release._
 
 ## The project
 
@@ -11,7 +11,7 @@ MedVia — portfolio project for Korean healthtech job applications. Foreign pat
 find verified Seoul clinics and book treatments in their own language. Not a business: no SMS, no
 outgoing email, no payments, no HIRA. The sample patient persona is **Feride Karimova**.
 
-- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M10 + AI-1
+- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M10 + AI-1 + AI-2
 - Design and data model: `~/Desktop/MedVia-design` — ER source `er/model.js`, mockup generators `source/`
 - ER model (24 collections): https://claude.ai/artifact/LiWJjgdBPcaLSjdGkefKcA
 - Clickable prototype (61 screens): https://claude.ai/artifact/Js6b1j85jbvBrxCSpNRiWt
@@ -35,13 +35,23 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M8 | Community + CS + Notification — split into M8a / M8b / M8c | ✅ done — M8a merged (`4f598e4`), M8b + M8c merged (`8214884`) |
 | M9 | Batch — BullMQ delayed jobs + nightly recount / rank | ✅ done, merged (`f0806ba`) |
 | M10 | Admin + audit log + access log + faker seed | ✅ done, merged (`dba638f`) |
-| **AI-2** | **Booking assistant agent — tool use over own services, hold only after patient confirms** | **built — waiting for the Postman run** |
+| AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | ✅ done, merged (`623d9c6`) |
 
-## Next step: the user runs AI-2 in Postman, then merge
+## Next step: plan the production release
 
-AI-2 is built on `feature/assistant` (not committed yet).
+Every milestone in the table is merged. What is left (to be planned with the user):
 
-### Built
+- **Frontend** — the biggest piece: the 61-screen prototype exists, the app does not.
+- **Deploy** — frontend and API on one site (`medvia.uz` + `api.medvia.uz`): the refresh token
+  is a cookie and Safari blocks third-party cookies.
+- **AI in production** — AI-1's lock refuses fake / OpenRouter with `NODE_ENV=production`;
+  decide consciously for the demo (synthetic data) — and a separate `medvia-demo` OpenRouter key.
+- **Socket.IO Redis adapter** (M7) if the API runs as more than one instance.
+- `develop` → `main` at the release.
+- Small debts: `memberMustChangePassword`, Google sign-in (`GOOGLE_CLIENT_ID`), the ER model,
+  Korean partial search, a translation model via `eval:translate`.
+
+### What AI-2 built
 - `components/assistant`: `sendAssistantMessage`, `confirmAssistantHold`, `getMyAssistantSession`,
   `closeAssistantSession` (patients only, AI consent required). Five tools over the existing
   services; `propose_hold` stores a proposal, only `confirmAssistantHold` holds.
@@ -54,13 +64,6 @@ AI-2 is built on `feature/assistant` (not committed yet).
 - Postman **`AI-2 — Assistant`** (order 15000, 40 requests, 76 assertions); 7 mutants, all killed.
   `formatError` maps 503 → `SERVICE_UNAVAILABLE`. Full runs green: Newman (938 requests,
   1567 assertions, batch running), socket 17/17, Jest 236/236, typecheck, lint, build.
-
-### Left
-1. The user runs `AI-2 — Assistant` in Postman (API with `AI_PROVIDER=fake`).
-2. ~~Pick the model~~ — done: `AI_MODEL_ASSISTANT=nvidia/nemotron-3-super-120b-a12b:free` (12/12 twice);
-   `OPENROUTER_API_KEY` is in `.env`. `AI_PROVIDER` stays `fake` for the Postman suite.
-3. Commit, merge `--no-ff` into `develop`, close AI-2, push, delete the branch.
-4. Then: the production release (frontend, deploy, `main`), incl. the AI-1 production lock.
 
 ### What M10 built
 - **Access log** (`components/access-log`, `accessLogs`): one line per decrypt of the answers or
