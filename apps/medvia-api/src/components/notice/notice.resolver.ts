@@ -61,17 +61,23 @@ export class NoticeResolver {
 	@Roles(MemberType.ADMIN)
 	@UseGuards(RolesGuard)
 	@Mutation(() => Notice)
-	public async updateNotice(@Args('input') input: NoticeUpdate): Promise<Notice> {
+	public async updateNotice(
+		@Args('input') input: NoticeUpdate,
+		@AuthMember('_id') adminId: ObjectId,
+	): Promise<Notice> {
 		console.log('Mutation: updateNotice');
-		return await this.noticeService.updateNotice(input);
+		return await this.noticeService.updateNotice(adminId, input);
 	}
 
 	@Roles(MemberType.ADMIN)
 	@UseGuards(RolesGuard)
 	@Mutation(() => Notice)
-	public async removeNotice(@Args('noticeId') noticeId: string): Promise<Notice> {
+	public async removeNotice(
+		@Args('noticeId') noticeId: string,
+		@AuthMember('_id') adminId: ObjectId,
+	): Promise<Notice> {
 		console.log('Mutation: removeNotice');
-		return await this.noticeService.removeNotice(noticeId);
+		return await this.noticeService.removeNotice(adminId, noticeId);
 	}
 
 	@Roles(MemberType.ADMIN)

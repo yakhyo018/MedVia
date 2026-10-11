@@ -3,24 +3,14 @@ url: '{{baseUrl}}/graphql'
 method: POST
 headers:
   Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
 body:
   type: graphql
   content:
     query: |-
-      query GetClinics($input: ClinicsInquiry!) {
-        getClinics(input: $input) {
-          list { _id clinicName clinicDistrict clinicLangs clinicInterpreterLangs clinicLikes }
-          metaCounter { total }
-        }
-      }
+      query H($input: AuditLogsInquiry!) { getAuditLogsByAdmin(input: $input) { _id auditAction auditGroup auditRefId auditNote memberId adminName createdAt } }
     variables: |-
-      {
-        "input": {
-          "page": 1,
-          "limit": 10,
-          "search": { "text": "{{clinicName}}", "langs": ["KK"], "interpreter": true }
-        }
-      }
+      { "input": { "auditGroup": "MEMBER", "auditRefId": "{{patient2Id}}" } }
 scripts:
   - type: afterResponse
     code: |-
@@ -30,7 +20,8 @@ scripts:
       const msg = err.message || '';
       const code = (err.extensions && err.extensions.code) || '';
       pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
-      const page = gql.getClinics || {};
-      pm.test('empty list', () => pm.expect(page.list).to.eql([]));
+      const lines = gql.getAuditLogsByAdmin || [];
+      const actions = lines.map((l) => l.auditAction);
+      pm.test('UNBLOCK, BLOCK', () => pm.expect(actions).to.eql(['MEMBER_UNBLOCK', 'MEMBER_BLOCK']));
     language: text/javascript
-order: 28000
+order: 51000

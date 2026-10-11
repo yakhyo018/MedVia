@@ -3,12 +3,13 @@ import {
 	ForbiddenException,
 	Injectable,
 	InternalServerErrorException,
+	NotFoundException,
 	UnauthorizedException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Model, ObjectId } from 'mongoose';
+import { ClientSession, Model, ObjectId, Types } from 'mongoose';
 import type { Request, Response } from 'express';
-import { Member, Members } from '../../libs/dto/member/member';
+import { Member, MemberDetail, Members } from '../../libs/dto/member/member';
 import {
 	ChangePasswordInput,
 	GoogleLoginInput,
@@ -23,6 +24,12 @@ import { AuthMember, T } from '../../libs/types/common';
 import { AI_CONSENT_VERSION, escapeRegex, shapeIntoMongoObjectId } from '../../libs/config';
 import { AuthService } from '../auth/auth.service';
 import { GoogleService } from '../auth/google.service';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuditGroup } from '../../libs/enums/admin.enum';
+import { memberAuditAction } from './member.rules';
+import { BookingStatus } from '../../libs/enums/booking.enum';
+import { BoardArticleStatus } from '../../libs/enums/board-article.enum';
+import { effectiveStatus } from '../booking/booking.rules';
 
 const DUPLICATE_KEY = 11000;
 
@@ -42,8 +49,15 @@ export interface EmailMemberFields {
 export class MemberService {
 	constructor(
 		@InjectModel('Member') private readonly memberModel: Model<Member>,
+		// Read for the admin's user detail only. Models, not modules: Clinic and Doctor modules
+		// import this one, and Booking imports Clinic — importing BookingModule would close a cycle.
+		@InjectModel('Booking') private readonly bookingModel: Model<T>,
+		@InjectModel('BoardArticle') private readonly articleModel: Model<T>,
+		@InjectModel('Comment') private readonly commentModel: Model<T>,
+		@InjectModel('Report') private readonly reportModel: Model<T>,
 		private readonly authService: AuthService,
 		private readonly googleService: GoogleService,
+		private readonly auditLogService: AuditLogService,
 	) {}
 
 	/* ───────────────────────── sign up / sign in ───────────────────────── */
@@ -333,19 +347,98 @@ export class MemberService {
 		return result[0] as Members;
 	}
 
-	/** Blocking or deleting signs the member out everywhere, immediately. */
-	public async updateMemberByAdmin(input: MemberAdminUpdate): Promise<Member> {
+	/**
+	 * The admin's user detail: the account, its activity, its last bookings — never the medical
+	 * answers (the admin sees that they were read, in the access log, not what they say).
+	 */
+	public async getMemberDetailByAdmin(memberId: string): Promise<MemberDetail> {
+		if (!Types.ObjectId.isValid(memberId)) throw new NotFoundException(Messages.NO_DATA_FOUND);
+		const _id = shapeIntoMongoObjectId(memberId);
+		const member = await this.memberModel.findById(_id, { memberPassword: 0 }).lean().exec();
+		if (!member) throw new NotFoundException(Messages.NO_DATA_FOUND);
+
+		const [completedVisits, noShows, posts, articleIds, commentIds, bookings] = await Promise.all([
+			this.bookingModel
+				.countDocuments({ memberId: _id, bookingStatus: BookingStatus.COMPLETED })
+				.exec(),
+			this.bookingModel
+				.countDocuments({ memberId: _id, bookingStatus: BookingStatus.NO_SHOW })
+				.exec(),
+			this.articleModel
+				.countDocuments({ memberId: _id, articleStatus: { $ne: BoardArticleStatus.DELETE } })
+				.exec(),
+			this.articleModel.distinct('_id', { memberId: _id }).exec(),
+			this.commentModel.distinct('_id', { memberId: _id }).exec(),
+			this.bookingModel
+				.aggregate([
+					{ $match: { memberId: _id } },
+					{ $sort: { bookingDate: -1, _id: -1 } },
+					{ $limit: 10 },
+					{
+						$lookup: {
+							from: 'clinics',
+							localField: 'clinicId',
+							foreignField: '_id',
+							pipeline: [{ $project: { clinicName: 1 } }],
+							as: 'clinic',
+						},
+					},
+					{
+						$lookup: {
+							from: 'treatments',
+							localField: 'treatmentId',
+							foreignField: '_id',
+							pipeline: [{ $project: { treatmentName: 1 } }],
+							as: 'treatment',
+						},
+					},
+				])
+				.exec(),
+		]);
+		const reportsAgainst = await this.reportModel
+			.countDocuments({ reportRefId: { $in: [...articleIds, ...commentIds] } })
+			.exec();
+
+		const now = new Date();
+		return {
+			member: member as Member,
+			completedVisits,
+			noShows,
+			posts,
+			reportsAgainst,
+			recentBookings: bookings.map((b: T) => ({
+				_id: b._id,
+				bookingCode: b.bookingCode,
+				bookingStatus: effectiveStatus(b, now),
+				bookingDate: b.bookingDate,
+				clinicName: b.clinic[0]?.clinicName,
+				treatmentName: b.treatment[0]?.treatmentName,
+			})),
+		};
+	}
+
+	/**
+	 * Blocking or deleting signs the member out everywhere, immediately. A real change is an
+	 * admin decision and goes to the audit log; repeating the same status does not.
+	 */
+	public async updateMemberByAdmin(adminId: ObjectId, input: MemberAdminUpdate): Promise<Member> {
 		const _id = shapeIntoMongoObjectId(input._id);
 		const update: T = { memberStatus: input.memberStatus };
 		update.deletedAt = input.memberStatus === MemberStatus.DELETE ? new Date() : null;
 
-		const member = await this.memberModel
-			.findByIdAndUpdate(_id, update, { new: true })
-			.lean()
-			.exec();
-		if (!member) throw new InternalServerErrorException(Messages.UPDATE_FAILED);
+		const before = await this.memberModel.findByIdAndUpdate(_id, update).lean().exec();
+		if (!before) throw new InternalServerErrorException(Messages.UPDATE_FAILED);
 
 		if (input.memberStatus !== MemberStatus.ACTIVE) await this.authService.endAllSessions(_id);
-		return member as Member;
+		const action = memberAuditAction(before.memberStatus, input.memberStatus);
+		if (action) {
+			await this.auditLogService.record({
+				auditAction: action,
+				auditGroup: AuditGroup.MEMBER,
+				auditRefId: _id as ObjectId,
+				memberId: adminId,
+			});
+		}
+		return { ...before, ...update } as Member;
 	}
 }

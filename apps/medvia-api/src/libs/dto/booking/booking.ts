@@ -1,4 +1,4 @@
-import { Field, Int, ObjectType } from '@nestjs/graphql';
+import { Field, Float, Int, ObjectType } from '@nestjs/graphql';
 import type { ObjectId } from 'mongoose';
 import { BookingActor, BookingConsentType, BookingStatus } from '../../enums/booking.enum';
 import { Language } from '../../enums/common.enum';
@@ -151,4 +151,47 @@ export class Bookings {
 
 	@Field(() => [TotalCounter], { nullable: true })
 	metaCounter!: TotalCounter[];
+}
+
+@ObjectType()
+export class DayCount {
+	/** A Seoul calendar date, "2026-10-11". */
+	@Field(() => String)
+	date!: string;
+
+	@Field(() => Int)
+	count!: number;
+}
+
+@ObjectType()
+export class LanguageShare {
+	@Field(() => Language)
+	lang!: Language;
+
+	@Field(() => Int)
+	count!: number;
+
+	/** 0 … 1, rounded to three decimals. */
+	@Field(() => Float)
+	share!: number;
+}
+
+/** The booking cards of the admin dashboard. */
+@ObjectType()
+export class BookingStats {
+	/** Requests sent today (Seoul). */
+	@Field(() => Int)
+	today!: number;
+
+	/** PENDING, the clinic's deadline still ahead. */
+	@Field(() => Int)
+	waitingForClinic!: number;
+
+	/** Requests per Seoul day, oldest first, days without any included as 0. */
+	@Field(() => [DayCount])
+	last14Days!: DayCount[];
+
+	/** The patients' languages over the last 30 days, largest first. */
+	@Field(() => [LanguageShare])
+	languages!: LanguageShare[];
 }

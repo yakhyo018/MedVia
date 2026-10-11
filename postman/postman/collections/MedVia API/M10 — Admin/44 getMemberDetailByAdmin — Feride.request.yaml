@@ -1,0 +1,29 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query D($id: String!) { getMemberDetailByAdmin(memberId: $id) { member { _id memberEmail memberStatus } completedVisits noShows posts reportsAgainst recentBookings { _id bookingCode bookingStatus bookingDate clinicName treatmentName } } }
+    variables: |-
+      { "id": "{{patientId}}" }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const d = gql.getMemberDetailByAdmin || {};
+      pm.test('her account', () => pm.expect([(d.member || {})._id, (d.member || {}).memberStatus]).to.eql([pm.environment.get('patientId'), 'ACTIVE']));
+      pm.test('1 completed, 0 no-shows, 1 post, 1 report against her', () => pm.expect([d.completedVisits, d.noShows, d.posts, d.reportsAgainst]).to.eql([1, 0, 1, 1]));
+      const b = (d.recentBookings || [])[0] || {};
+      pm.test('her booking with clinic and treatment', () => pm.expect([b.bookingCode, b.bookingStatus, b.clinicName, b.treatmentName]).to.eql([pm.environment.get('bookingCode'), 'COMPLETED', 'Admin Test Clinic ' + pm.environment.get('stamp'), 'Laser Toning ' + pm.environment.get('token')]));
+    language: text/javascript
+order: 44000

@@ -1,0 +1,19 @@
+$kind: http-request
+url: '{{baseUrl}}/upload/image?target=clinic'
+method: POST
+headers:
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: formdata
+  content:
+    - key: file
+      type: file
+      src: fixtures/clinic-photo.png
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json() || {};
+      pm.test('status 201', () => pm.response.to.have.status(201));
+      pm.environment.set('clinicImage', body.url || '');
+    language: text/javascript
+order: 9000

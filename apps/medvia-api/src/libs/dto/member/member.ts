@@ -2,6 +2,7 @@ import { Field, Int, ObjectType } from '@nestjs/graphql';
 import type { ObjectId } from 'mongoose';
 import { MemberAuthType, MemberStatus, MemberType } from '../../enums/member.enum';
 import { Language } from '../../enums/common.enum';
+import { BookingStatus } from '../../enums/booking.enum';
 
 @ObjectType()
 export class NotifySettings {
@@ -98,4 +99,51 @@ export class Members {
 
 	@Field(() => [TotalCounter], { nullable: true })
 	metaCounter!: TotalCounter[];
+}
+
+/** One line of the admin's user detail: a booking without its medical data. */
+@ObjectType()
+export class MemberBookingRow {
+	@Field(() => String)
+	_id!: ObjectId;
+
+	@Field(() => String)
+	bookingCode!: string;
+
+	@Field(() => BookingStatus)
+	bookingStatus!: BookingStatus;
+
+	@Field(() => Date)
+	bookingDate!: Date;
+
+	@Field(() => String, { nullable: true })
+	clinicName?: string;
+
+	@Field(() => String, { nullable: true })
+	treatmentName?: string;
+}
+
+/** The admin's user detail: the account, what the member did, and their last bookings. */
+@ObjectType()
+export class MemberDetail {
+	@Field(() => Member)
+	member!: Member;
+
+	@Field(() => Int)
+	completedVisits!: number;
+
+	@Field(() => Int)
+	noShows!: number;
+
+	/** Posts not deleted. */
+	@Field(() => Int)
+	posts!: number;
+
+	/** Reports by others against this member's posts and comments. */
+	@Field(() => Int)
+	reportsAgainst!: number;
+
+	/** The latest 10, newest visit first. */
+	@Field(() => [MemberBookingRow])
+	recentBookings!: MemberBookingRow[];
 }

@@ -4,7 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { ObjectId } from 'mongoose';
 import { MemberService } from './member.service';
 import { AuthService } from '../auth/auth.service';
-import { Member, Members } from '../../libs/dto/member/member';
+import { Member, MemberDetail, Members } from '../../libs/dto/member/member';
 import {
 	ChangePasswordInput,
 	GoogleLoginInput,
@@ -131,9 +131,20 @@ export class MemberResolver {
 
 	@Roles(MemberType.ADMIN)
 	@UseGuards(RolesGuard)
+	@Query(() => MemberDetail)
+	public async getMemberDetailByAdmin(@Args('memberId') memberId: string): Promise<MemberDetail> {
+		console.log('Query: getMemberDetailByAdmin');
+		return await this.memberService.getMemberDetailByAdmin(memberId);
+	}
+
+	@Roles(MemberType.ADMIN)
+	@UseGuards(RolesGuard)
 	@Mutation(() => Member)
-	public async updateMemberByAdmin(@Args('input') input: MemberAdminUpdate): Promise<Member> {
+	public async updateMemberByAdmin(
+		@Args('input') input: MemberAdminUpdate,
+		@AuthMember('_id') adminId: ObjectId,
+	): Promise<Member> {
 		console.log('Mutation: updateMemberByAdmin');
-		return await this.memberService.updateMemberByAdmin(input);
+		return await this.memberService.updateMemberByAdmin(adminId, input);
 	}
 }

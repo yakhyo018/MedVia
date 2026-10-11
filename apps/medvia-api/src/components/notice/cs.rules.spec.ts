@@ -1,3 +1,4 @@
+import { AuditAction } from '../../libs/enums/admin.enum';
 import { Language, Messages } from '../../libs/enums/common.enum';
 import { InquiryCategory, InquirySender, InquiryStatus } from '../../libs/enums/inquiry.enum';
 import { NoticeCategory, NoticeStatus } from '../../libs/enums/notice.enum';
@@ -10,6 +11,7 @@ import {
 	nextStatusOnMessage,
 	publishedAtFor,
 	threadHasRoom,
+	noticeAuditAction,
 } from './cs.rules';
 
 const NOW = new Date('2026-10-10T05:00:00Z');
@@ -82,5 +84,21 @@ describe('inquiries', () => {
 	it('caps the thread with a filter on the last slot', () => {
 		expect(threadHasRoom()).toEqual({ [`inquiryMessages.${MAX_THREAD - 1}`]: { $exists: false } });
 		expect(MAX_THREAD).toBe(50);
+	});
+});
+
+describe('noticeAuditAction', () => {
+	const { HOLD, ACTIVE, DELETE } = NoticeStatus;
+
+	it('records going live, coming down and removal', () => {
+		expect(noticeAuditAction(null, ACTIVE)).toBe(AuditAction.NOTICE_PUBLISH);
+		expect(noticeAuditAction(HOLD, ACTIVE)).toBe(AuditAction.NOTICE_PUBLISH);
+		expect(noticeAuditAction(ACTIVE, HOLD)).toBe(AuditAction.NOTICE_UNPUBLISH);
+		expect(noticeAuditAction(HOLD, DELETE)).toBe(AuditAction.NOTICE_REMOVE);
+	});
+
+	it('records nothing for a draft or an unchanged status', () => {
+		expect(noticeAuditAction(null, HOLD)).toBeNull();
+		expect(noticeAuditAction(ACTIVE, ACTIVE)).toBeNull();
 	});
 });

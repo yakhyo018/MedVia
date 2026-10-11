@@ -9,8 +9,10 @@ import {
 	IsInt,
 	IsMongoId,
 	IsOptional,
+	IsString,
 	Length,
 	Max,
+	MaxLength,
 	Min,
 	ValidateNested,
 } from 'class-validator';
@@ -137,6 +139,19 @@ export class BookingsInquiry {
 	@IsMongoId()
 	@Field(() => String, { nullable: true })
 	clinicId?: string;
+
+	/** One patient's bookings (the admin's user detail). */
+	@IsOptional()
+	@IsMongoId()
+	@Field(() => String, { nullable: true })
+	memberId?: string;
+
+	/** A booking code ("MV-2026-48") or part of the patient's name. */
+	@IsOptional()
+	@IsString()
+	@MaxLength(50)
+	@Field(() => String, { nullable: true })
+	search?: string;
 }
 
 /**

@@ -410,3 +410,40 @@ export const reminderDueFilter = (now: Date): T => ({
 	bookingRemindedAt: null,
 	bookingDate: { $gt: now, $lte: new Date(now.getTime() + REMIND_HOURS * HOUR) },
 });
+
+/* ───────────────────────── admin statistics (M10) ───────────────────────── */
+
+export const STATS_DAYS = 14;
+export const LANGUAGE_DAYS = 30;
+
+/** The UTC instant at which a Seoul calendar day begins. */
+export const seoulDayStart = (date: string) => seoulToUtc(date, 0);
+
+/** The Seoul date `n` days before `date`. */
+export const seoulDaysBefore = (date: string, n: number) =>
+	new Date(Date.parse(`${date}T00:00:00Z`) - n * DAY).toISOString().slice(0, 10);
+
+/** The last `days` Seoul dates up to today, each with its count — a missing day is 0. */
+export function fillDays(
+	rows: { _id: string; count: number }[],
+	today: string,
+	days: number,
+): { date: string; count: number }[] {
+	const counts = new Map(rows.map((r) => [r._id, r.count]));
+	return Array.from({ length: days }, (_, i) => {
+		const date = seoulDaysBefore(today, days - 1 - i);
+		return { date, count: counts.get(date) ?? 0 };
+	});
+}
+
+/** Counts per language → shares of the total, largest first. */
+export function languageShares<L extends string>(rows: { _id: L; count: number }[]) {
+	const total = rows.reduce((sum, r) => sum + r.count, 0);
+	return rows
+		.map((r) => ({
+			lang: r._id,
+			count: r.count,
+			share: total ? Math.round((r.count / total) * 1000) / 1000 : 0,
+		}))
+		.sort((a, b) => b.count - a.count);
+}

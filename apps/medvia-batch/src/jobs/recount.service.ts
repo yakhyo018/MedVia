@@ -40,7 +40,8 @@ export class RecountService {
 	private report({ checked, ops }: { checked: number; ops: T[] }): string {
 		const fields = new Map<string, number>();
 		for (const op of ops) {
-			for (const field of Object.keys(op.updateOne.update.$set)) {
+			// Mongoose adds updatedAt to the $set it sends; that is not a drifted field.
+			for (const field of Object.keys(op.updateOne.update.$set).filter((f) => f !== 'updatedAt')) {
 				fields.set(field, (fields.get(field) ?? 0) + 1);
 			}
 		}
