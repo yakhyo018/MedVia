@@ -2287,3 +2287,108 @@ never signs in six times a minute); the suite was wrong. Each folder's admin log
 token from an earlier folder while it has more than 5 minutes left, and skips the request. The
 lesson: when a security control fails a test, first ask which of the two is behaving unlike
 production.
+
+## M10 — Admin: audit log, access log, the admin's views
+
+### 1. No "admin module" — each admin API lives with its data
+
+`getMemberDetailByAdmin` is in the member module, `getBookingStatsByAdmin` in booking,
+`getAuditFeedByAdmin` and `getBatchStatusByAdmin` in audit-log, `getAccessLogsByAdmin` in the new
+access-log component. An admin is a member with a role, not a separate application: the
+`@Roles(ADMIN)` guard is the difference, the data stays where it is owned. A central admin module
+would import every other module — the one place every change has to touch.
+
+The member module could not import BookingModule (clinic and doctor import member, booking
+imports clinic: a cycle), so the user detail reads the Booking, BoardArticle, Comment and Report
+**models** — the same answer FollowService gave in M2.
+
+### 2. The dashboard is one GraphQL request, not one endpoint
+
+```graphql
+query Dashboard {
+  bookings: getBookingStatsByAdmin { … }
+  clinics:  getClinicsByAdmin(input: { page: 1, limit: 1, clinicStatus: PENDING }) { metaCounter { total } }
+  reports:  getReportsByAdmin(input: { page: 1, limit: 1, reportStatus: PENDING }) { metaCounter { total } }
+  recent:   getAuditFeedByAdmin(input: { page: 1, limit: 10 }) { … }
+  batch:    getBatchStatusByAdmin { … }
+}
+```
+
+A REST API would grow a `/admin/dashboard` endpoint (a backend-for-frontend) that knows every
+card. In GraphQL the client composes the page from fields that already exist; "clinics waiting
+for review" is just the `metaCounter.total` of the existing admin list with `limit: 1`. One
+network round trip, no new server code per card.
+
+### 3. The audit log records decisions — once
+
+New lines: `MEMBER_BLOCK / UNBLOCK / DELETE / RESTORE`, `NOTICE_PUBLISH / UNPUBLISH / REMOVE`.
+Pure functions (`memberAuditAction`, `noticeAuditAction`) decide what counts: a real status
+change does; blocking a blocked member, or editing a notice's words, does not. A log that records
+non-events hides the real ones. The new feed (`getAuditFeedByAdmin`) filters by group, action,
+admin and date, newest first, with the admin's name; the old per-object history stays as it was.
+
+### 4. The access log: who read a patient's medical data
+
+Every time `getBooking` decrypts the questionnaire or the AI summary **for someone else** — the
+clinic, the doctor — one line goes to `accessLogs` per part. Not for the patient's own reading
+(not news to anyone), and never for the admin, who receives no medical data at all.
+
+- **The patient** sees the list: `getMyAccessLogs` — "who saw my medical data?". PIPA gives a
+  data subject the right to know how their data was used; this is that right as an API.
+- **The admin** sees *that* data was read, by whom and when — never *what* it says.
+- The reader's name and the booking code are **copied** onto the line: a log records what
+  happened then; it must not change when a clinic is renamed.
+- Writing it never throws: the reading already happened; a lost line is an error in the log,
+  not an error page for the doctor.
+- TTL one year.
+
+### 5. Search after scope — a bug the test found
+
+The first version looked up members by name, `limit(200)`, then matched bookings with
+`memberId $in`. The suite's dev database has hundreds of "Feride Karimova"s; the newest one was
+not in the first 200, and her booking silently disappeared from the search. A cap on an
+intermediate list is a correctness bug, not a performance setting. Now the search runs inside
+the bookings pipeline **after the scope match**: `$lookup` the patient's name, then match code or
+name. It can only narrow what the caller may already see, and nothing is dropped. At real scale
+the next step is a search index on a denormalised patient name — not a cap.
+
+### 6. Small things that keep a dashboard honest
+
+- Days are **Seoul** days: `$dateToString` with `timezone: 'Asia/Seoul'`, and `fillDays`
+  returns 14 dates with zeros, so the chart has no holes.
+- `getBatchStatusByAdmin` reads the batch's `batchLogs` and the queue's job counts — with a
+  1-second timeout, because BullMQ waits for a lost Redis forever and a dashboard must not.
+
+### 7. What the tests proved
+
+| Broken on purpose | Caught by |
+| --- | --- |
+| the patient's own reading logged | "her own reading is not logged" + the line counts |
+| the admin's reading logged | "no ADMIN line" |
+| a repeated block recorded | "MEMBER_BLOCK once" |
+| a word edit recorded as a publication | the notice's history |
+| the feed ignores the group filter | "only MEMBER, only this admin" |
+| search ignores the booking code | "finds it by code" |
+| name search capped at 200 members (the original code) | "by part of the patient's name" — found before any mutation |
+
+### Interview questions and answers
+
+**1. Where do admin APIs belong?**
+
+With the data they read and change, behind a role guard — not in a central admin module that imports everything. The role is an authorisation rule, not a separate domain.
+
+**2. How do you build a dashboard in GraphQL without a dashboard endpoint?**
+
+One query with several root fields, aliased per card. Existing list queries give counts through `metaCounter.total` with `limit: 1`. The server adds only what does not exist yet (booking stats, batch status).
+
+**3. What is an access log and why does a health platform need one?**
+
+A record of every reading of sensitive data by someone other than its owner: who, what, when. Privacy law (PIPA, GDPR) gives patients the right to know how their data was used, and investigations need it. It records the fact, never the content — even the admin who reads the log never sees the data.
+
+**4. Why copy the reader's name into the log instead of joining it?**
+
+A log is a snapshot of what happened. If a clinic renames itself, past readings must still show the name the patient saw then. Copying is wrong for live data, right for history.
+
+**5. Your search first collected matching member ids with a limit. What was wrong?**
+
+The limit silently dropped matches: a common name had more members than the cap, and their bookings vanished from the results. Narrowing with a capped intermediate list is a correctness bug. The fix matches inside the scoped pipeline after a `$lookup`; at scale, a text index on a denormalised name.

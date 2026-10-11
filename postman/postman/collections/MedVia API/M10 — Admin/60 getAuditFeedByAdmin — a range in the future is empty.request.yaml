@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query F($input: AuditFeedInquiry!) { getAuditFeedByAdmin(input: $input) { list { _id auditAction auditGroup auditRefId auditNote memberId adminName createdAt } metaCounter { total } } }
+    variables: |-
+      { "input": { "page": 1, "limit": 20, "from": "2999-01-01T00:00:00.000Z" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('0', () => pm.expect((((gql.getAuditFeedByAdmin || {}).metaCounter || [])[0] || {}).total || 0).to.eql(0));
+    language: text/javascript
+order: 60000

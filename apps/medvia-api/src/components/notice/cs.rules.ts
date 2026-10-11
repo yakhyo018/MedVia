@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { AuditAction } from '../../libs/enums/admin.enum';
 import { Language, Messages } from '../../libs/enums/common.enum';
 import { InquiryCategory, InquirySender, InquiryStatus } from '../../libs/enums/inquiry.enum';
 import { NoticeCategory, NoticeStatus } from '../../libs/enums/notice.enum';
@@ -32,6 +33,17 @@ export function localizeNotice(notice: T, lang?: Language): T {
 export function publishedAtFor(current: T | null, nextStatus: NoticeStatus | undefined, now: Date) {
 	if (nextStatus !== NoticeStatus.ACTIVE || current?.publishedAt) return undefined;
 	return now;
+}
+
+/**
+ * The audit line for a status change by the team: going live, coming down, or removed. Edits
+ * of the words are not decisions; saving a draft as a draft is nothing.
+ */
+export function noticeAuditAction(from: NoticeStatus | null, to: NoticeStatus): AuditAction | null {
+	if (from === to) return null;
+	if (to === NoticeStatus.ACTIVE) return AuditAction.NOTICE_PUBLISH;
+	if (to === NoticeStatus.DELETE) return AuditAction.NOTICE_REMOVE;
+	return from === NoticeStatus.ACTIVE ? AuditAction.NOTICE_UNPUBLISH : null;
 }
 
 /* ───────────────────────── inquiries ───────────────────────── */

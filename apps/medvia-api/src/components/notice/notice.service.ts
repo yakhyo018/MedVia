@@ -13,7 +13,9 @@ import { Language, Messages } from '../../libs/enums/common.enum';
 import { NoticeStatus } from '../../libs/enums/notice.enum';
 import { AuthMember, T } from '../../libs/types/common';
 import { shapeIntoMongoObjectId } from '../../libs/config';
-import { checkNoticeShape, localizeNotice, publishedAtFor } from './cs.rules';
+import { checkNoticeShape, localizeNotice, noticeAuditAction, publishedAtFor } from './cs.rules';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuditGroup } from '../../libs/enums/admin.enum';
 
 /**
  * Notices and FAQ answers. The team writes them (HOLD until published); everyone reads the
@@ -24,6 +26,7 @@ export class NoticeService {
 	constructor(
 		@InjectModel('Notice') private readonly noticeModel: Model<T>,
 		@InjectModel('Member') private readonly memberModel: Model<T>,
+		private readonly auditLogService: AuditLogService,
 	) {}
 
 	/* ───────────────────────── admin ───────────────────────── */
@@ -35,11 +38,12 @@ export class NoticeService {
 			publishedAt: publishedAtFor(null, input.noticeStatus, new Date()),
 			memberId: adminId,
 		});
+		await this.audit(adminId, created._id, null, created.noticeStatus);
 		return localizeNotice(created.toObject()) as Notice;
 	}
 
 	/** Category and FAQ tab are fixed at creation; the words, pin, translations and status move. */
-	public async updateNotice(input: NoticeUpdate): Promise<Notice> {
+	public async updateNotice(adminId: ObjectId, input: NoticeUpdate): Promise<Notice> {
 		const { noticeId, ...fields } = input;
 		const current = await this.findNotDeleted(noticeId);
 		const set: T = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
@@ -55,10 +59,11 @@ export class NoticeService {
 			.lean()
 			.exec();
 		if (!updated) throw new NotFoundException(Messages.NO_DATA_FOUND);
+		await this.audit(adminId, current._id, current.noticeStatus, updated.noticeStatus);
 		return localizeNotice(updated) as Notice;
 	}
 
-	public async removeNotice(noticeId: string): Promise<Notice> {
+	public async removeNotice(adminId: ObjectId, noticeId: string): Promise<Notice> {
 		const current = await this.findNotDeleted(noticeId);
 		const removed = await this.noticeModel
 			.findByIdAndUpdate(
@@ -68,7 +73,25 @@ export class NoticeService {
 			)
 			.lean()
 			.exec();
+		await this.audit(adminId, current._id, current.noticeStatus, NoticeStatus.DELETE);
 		return removed as unknown as Notice;
+	}
+
+	/** Publishing, unpublishing and removal are the team's decisions: one audit line each. */
+	private async audit(
+		adminId: ObjectId,
+		noticeId: unknown,
+		from: NoticeStatus | null,
+		to: NoticeStatus,
+	): Promise<void> {
+		const action = noticeAuditAction(from, to);
+		if (!action) return;
+		await this.auditLogService.record({
+			auditAction: action,
+			auditGroup: AuditGroup.NOTICE,
+			auditRefId: noticeId as ObjectId,
+			memberId: adminId,
+		});
 	}
 
 	public async getNoticesByAdmin(input: AdminNoticesInquiry): Promise<Notices> {

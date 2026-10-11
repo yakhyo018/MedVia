@@ -58,4 +58,7 @@ const CommentSchema = new Schema(
 // The comments under a post, oldest first — a conversation reads top to bottom.
 CommentSchema.index({ articleId: 1, commentStatus: 1, createdAt: 1 });
 
+// The admin's user detail: a member's comments (and the reports against them).
+CommentSchema.index({ memberId: 1 });
+
 export default CommentSchema;

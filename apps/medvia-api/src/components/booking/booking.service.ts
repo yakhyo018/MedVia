@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, ObjectId, PipelineStage, Types } from 'mongoose';
-import { Booking, Bookings } from '../../libs/dto/booking/booking';
+import { Booking, Bookings, BookingStats } from '../../libs/dto/booking/booking';
 import {
 	BookingCreateInput,
 	BookingsInquiry,
@@ -23,7 +23,7 @@ import {
 import { Messages } from '../../libs/enums/common.enum';
 import { MemberType } from '../../libs/enums/member.enum';
 import { AuthMember, T } from '../../libs/types/common';
-import { shapeIntoMongoObjectId } from '../../libs/config';
+import { escapeRegex, shapeIntoMongoObjectId } from '../../libs/config';
 import { decrypt, encrypt, parseKey } from '../../libs/utils/crypto.util';
 import { ClinicService } from '../clinic/clinic.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
@@ -34,6 +34,7 @@ import { seoulWhen } from '../notification/notification.rules';
 import { NotificationType } from '../../libs/enums/notification.enum';
 import { SlotService } from './slot.service';
 import { BookingJobs } from './booking.jobs';
+import { AccessLogService } from '../access-log/access-log.service';
 import {
 	actorOf,
 	bookingScope,
@@ -41,15 +42,22 @@ import {
 	confirmIsReminder,
 	effectiveStatus,
 	expiryDueFilter,
+	fillDays,
+	LANGUAGE_DAYS,
+	languageShares,
 	makeBookingCode,
 	MAX_PENDING_REQUESTS,
 	reminderAt,
 	reminderDueFilter,
 	respondDeadline,
 	ScopeIds,
+	seoulDateOf,
+	seoulDayStart,
+	seoulDaysBefore,
 	slotEffect,
 	slotsNeeded,
 	snapshotConsents,
+	STATS_DAYS,
 	SWEEP_BATCH,
 	hasConsent,
 	statusMatch,
@@ -111,6 +119,7 @@ export class BookingService {
 		private readonly aiService: AiService,
 		private readonly notificationService: NotificationService,
 		private readonly jobs: BookingJobs,
+		private readonly accessLogService: AccessLogService,
 	) {}
 
 	/* ───────────────────────── patient ───────────────────────── */
@@ -209,7 +218,8 @@ export class BookingService {
 	/**
 	 * One booking with its cards. The questionnaire is decrypted for the patient, the clinic
 	 * and the doctor of this booking — the scope already guarantees it is theirs. The admin
-	 * handles bookings, not medical data, and never receives it.
+	 * handles bookings, not medical data, and never receives it. Every decrypt for someone
+	 * other than the patient goes to the access log.
 	 */
 	public async getBooking(authMember: AuthMember, bookingId: string): Promise<Booking> {
 		const scope = await this.scopeOf(authMember);
@@ -219,7 +229,9 @@ export class BookingService {
 		if (!booking) throw new NotFoundException(Messages.NO_DATA_FOUND);
 
 		const withAnswers = authMember.memberType !== MemberType.ADMIN;
-		return this.present(booking, new Date(), withAnswers);
+		const view = this.present(booking, new Date(), withAnswers);
+		await this.accessLogService.recordReading(booking, authMember, withAnswers);
+		return view;
 	}
 
 	/**
@@ -234,12 +246,14 @@ export class BookingService {
 		if (input.bookingStatus) and.push(statusMatch(input.bookingStatus, now));
 		if (input.doctorId) and.push({ doctorId: this.toObjectId(input.doctorId) });
 		if (input.clinicId) and.push({ clinicId: this.toObjectId(input.clinicId) });
+		if (input.memberId) and.push({ memberId: this.toObjectId(input.memberId) });
 
 		// Upcoming reads soonest first; every other list newest first.
 		const direction = input.tab === BookingTab.UPCOMING ? 1 : -1;
 		const [result] = await this.bookingModel
 			.aggregate([
 				{ $match: { $and: and } },
+				...this.searchStages(input.search),
 				{ $sort: { bookingDate: direction, _id: direction } },
 				{
 					$facet: {
@@ -353,6 +367,47 @@ export class BookingService {
 			});
 		}
 		return this.present(updated as unknown as T, now, false);
+	}
+
+	/* ───────────────────────── admin ───────────────────────── */
+
+	/**
+	 * The booking cards of the dashboard, from the requests' createdAt in Seoul days. Each
+	 * number is one indexed query; the dashboard is read by a handful of admins.
+	 */
+	public async getBookingStats(now = new Date()): Promise<BookingStats> {
+		const today = seoulDateOf(now);
+		const since14 = seoulDayStart(seoulDaysBefore(today, STATS_DAYS - 1));
+		const since30 = seoulDayStart(seoulDaysBefore(today, LANGUAGE_DAYS - 1));
+		const [todayCount, waiting, perDay, perLang] = await Promise.all([
+			this.bookingModel.countDocuments({ createdAt: { $gte: seoulDayStart(today) } }).exec(),
+			this.bookingModel.countDocuments(statusMatch(BookingStatus.PENDING, now)).exec(),
+			this.bookingModel
+				.aggregate([
+					{ $match: { createdAt: { $gte: since14 } } },
+					{
+						$group: {
+							_id: {
+								$dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Seoul' },
+							},
+							count: { $sum: 1 },
+						},
+					},
+				])
+				.exec(),
+			this.bookingModel
+				.aggregate([
+					{ $match: { createdAt: { $gte: since30 } } },
+					{ $group: { _id: '$bookingLang', count: { $sum: 1 } } },
+				])
+				.exec(),
+		]);
+		return {
+			today: todayCount,
+			waitingForClinic: waiting,
+			last14Days: fillDays(perDay, today, STATS_DAYS),
+			languages: languageShares(perLang),
+		};
 	}
 
 	/* ───────────────────────── called by other modules ───────────────────────── */
@@ -514,6 +569,31 @@ export class BookingService {
 			.lean()
 			.exec();
 		return treatment?.treatmentName ?? '';
+	}
+
+	/**
+	 * "MV-2026-48" or "karimo": a booking code, or part of its patient's name. Applied after the
+	 * scope, so it only ever narrows what the caller may see. The text is escaped before it
+	 * becomes a RegExp (ReDoS, M8a). The name needs the patient joined first — a list of
+	 * matching member ids, capped, would silently drop bookings of a common name.
+	 */
+	private searchStages(search?: string): PipelineStage[] {
+		const text = search?.trim();
+		if (!text) return [];
+		const pattern = new RegExp(escapeRegex(text), 'i');
+		return [
+			{
+				$lookup: {
+					from: 'members',
+					localField: 'memberId',
+					foreignField: '_id',
+					pipeline: [{ $project: { memberFullName: 1 } }],
+					as: 'searchPatient',
+				},
+			},
+			{ $match: { $or: [{ bookingCode: pattern }, { 'searchPatient.memberFullName': pattern }] } },
+			{ $project: { searchPatient: 0 } },
+		];
 	}
 
 	/** A job names its booking; a sweep does not. */

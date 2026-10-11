@@ -179,6 +179,9 @@ BookingSchema.index({ doctorId: 1, bookingDate: -1 });
 // Bookings per treatment this month, for the clinic's treatment table.
 BookingSchema.index({ treatmentId: 1, bookingDate: 1 });
 
+// The admin dashboard: requests per Seoul day and per language.
+BookingSchema.index({ createdAt: 1 });
+
 // The expiry sweep: PENDING past respondDeadline.
 BookingSchema.index({ bookingStatus: 1, respondDeadline: 1 });
 

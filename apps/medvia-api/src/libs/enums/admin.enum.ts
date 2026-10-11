@@ -1,6 +1,6 @@
 import { registerEnumType } from '@nestjs/graphql';
 
-/** One value per admin decision. Treatment, review, article and member actions join later. */
+/** One value per admin decision. */
 export enum AuditAction {
 	CLINIC_APPROVE = 'CLINIC_APPROVE',
 	CLINIC_REQUEST_CHANGES = 'CLINIC_REQUEST_CHANGES',
@@ -22,6 +22,13 @@ export enum AuditAction {
 	ARTICLE_SHOW = 'ARTICLE_SHOW',
 	COMMENT_HIDE = 'COMMENT_HIDE',
 	COMMENT_SHOW = 'COMMENT_SHOW',
+	MEMBER_BLOCK = 'MEMBER_BLOCK',
+	MEMBER_UNBLOCK = 'MEMBER_UNBLOCK',
+	MEMBER_DELETE = 'MEMBER_DELETE',
+	MEMBER_RESTORE = 'MEMBER_RESTORE',
+	NOTICE_PUBLISH = 'NOTICE_PUBLISH',
+	NOTICE_UNPUBLISH = 'NOTICE_UNPUBLISH',
+	NOTICE_REMOVE = 'NOTICE_REMOVE',
 }
 registerEnumType(AuditAction, { name: 'AuditAction' });
 
@@ -33,6 +40,8 @@ export enum AuditGroup {
 	REVIEW = 'REVIEW',
 	ARTICLE = 'ARTICLE',
 	COMMENT = 'COMMENT',
+	MEMBER = 'MEMBER',
+	NOTICE = 'NOTICE',
 }
 registerEnumType(AuditGroup, { name: 'AuditGroup' });
 

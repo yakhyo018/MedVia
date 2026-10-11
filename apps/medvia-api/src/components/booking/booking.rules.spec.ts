@@ -16,12 +16,15 @@ import {
 	effectiveSlotStatus,
 	effectiveStatus,
 	expiryDueFilter,
+	fillDays,
+	languageShares,
 	makeBookingCode,
 	planSlotStarts,
 	reminderAt,
 	reminderDueFilter,
 	respondDeadline,
 	seoulDateOf,
+	seoulDayStart,
 	seoulMonthRange,
 	seoulToUtc,
 	slotEffect,
@@ -391,5 +394,43 @@ describe('the booking queue', () => {
 			bookingRemindedAt: null,
 			bookingDate: { $gt: now, $lte: hours(24) },
 		});
+	});
+});
+
+describe('admin statistics', () => {
+	it('starts a Seoul day at 15:00 UTC the day before', () => {
+		expect(seoulDayStart('2026-10-11').toISOString()).toBe('2026-10-10T15:00:00.000Z');
+	});
+
+	it('fills 14 days ending today, zeros included, oldest first', () => {
+		const days = fillDays(
+			[
+				{ _id: '2026-10-11', count: 3 },
+				{ _id: '2026-10-01', count: 1 },
+			],
+			'2026-10-11',
+			14,
+		);
+		expect(days).toHaveLength(14);
+		expect(days[0]).toEqual({ date: '2026-09-28', count: 0 });
+		expect(days[3]).toEqual({ date: '2026-10-01', count: 1 });
+		expect(days[13]).toEqual({ date: '2026-10-11', count: 3 });
+	});
+
+	it('crosses a month boundary', () => {
+		expect(fillDays([], '2026-03-01', 2).map((d) => d.date)).toEqual(['2026-02-28', '2026-03-01']);
+	});
+
+	it('turns counts into shares, largest first', () => {
+		expect(
+			languageShares([
+				{ _id: 'UZ', count: 1 },
+				{ _id: 'RU', count: 3 },
+			]),
+		).toEqual([
+			{ lang: 'RU', count: 3, share: 0.75 },
+			{ lang: 'UZ', count: 1, share: 0.25 },
+		]);
+		expect(languageShares([])).toEqual([]);
 	});
 });

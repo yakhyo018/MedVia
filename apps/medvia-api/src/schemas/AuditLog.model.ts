@@ -41,4 +41,10 @@ const AuditLogSchema = new Schema(
 // History of one clinic (or treatment, review ...), newest first.
 AuditLogSchema.index({ auditGroup: 1, auditRefId: 1, createdAt: -1 });
 
+// The admin's activity feed ("Recent activity"), newest first.
+AuditLogSchema.index({ createdAt: -1 });
+
+// What one admin decided.
+AuditLogSchema.index({ memberId: 1, createdAt: -1 });
+
 export default AuditLogSchema;

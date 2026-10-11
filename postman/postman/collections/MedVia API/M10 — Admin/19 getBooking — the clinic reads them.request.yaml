@@ -1,0 +1,27 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query G($id: String!) { getBooking(bookingId: $id) { _id bookingCode bookingStatus bookingQuestionnaire { originalLang answers { question answer } } bookingAiSummary } }
+    variables: |-
+      { "id": "{{bookingId}}" }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const b = gql.getBooking || {};
+      pm.test('the clinic gets the answers', () => pm.expect(((b.bookingQuestionnaire || {}).answers || []).length).to.eql(1));
+      pm.environment.set('clinicSawSummary', b.bookingAiSummary ? 'yes' : 'no');
+    language: text/javascript
+order: 19000

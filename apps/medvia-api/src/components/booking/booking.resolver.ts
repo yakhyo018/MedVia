@@ -2,7 +2,7 @@ import { UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import type { ObjectId } from 'mongoose';
 import { BookingService } from './booking.service';
-import { Booking, Bookings } from '../../libs/dto/booking/booking';
+import { Booking, Bookings, BookingStats } from '../../libs/dto/booking/booking';
 import {
 	BookingCreateInput,
 	BookingsInquiry,
@@ -59,6 +59,16 @@ export class BookingResolver {
 	): Promise<Booking> {
 		console.log('Query: getBooking');
 		return await this.bookingService.getBooking(authMember, bookingId);
+	}
+
+	/** ADMIN — the dashboard's booking cards. **/
+
+	@Roles(MemberType.ADMIN)
+	@UseGuards(RolesGuard)
+	@Query(() => BookingStats)
+	public async getBookingStatsByAdmin(): Promise<BookingStats> {
+		console.log('Query: getBookingStatsByAdmin');
+		return await this.bookingService.getBookingStats();
 	}
 
 	/** A doctor reads but never moves a booking — the clinic account does. */

@@ -1,9 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, ObjectId } from 'mongoose';
-import { AuditLog, AuditLogsInquiry } from '../../libs/dto/audit-log/audit-log';
+import {
+	AuditFeedInquiry,
+	AuditLog,
+	AuditLogs,
+	AuditLogsInquiry,
+} from '../../libs/dto/audit-log/audit-log';
 import { AuditAction, AuditGroup } from '../../libs/enums/admin.enum';
 import { shapeIntoMongoObjectId } from '../../libs/config';
+import { auditFeedMatch } from './audit-log.rules';
 
 export interface AuditInput {
 	auditAction: AuditAction;
@@ -29,5 +35,36 @@ export class AuditLogService {
 			.sort({ createdAt: -1 })
 			.lean()
 			.exec()) as AuditLog[];
+	}
+
+	/** "Recent activity": every decision, newest first, with the admin's name. */
+	public async getAuditFeed(input: AuditFeedInquiry): Promise<AuditLogs> {
+		const [result] = await this.auditLogModel
+			.aggregate([
+				{ $match: auditFeedMatch(input) },
+				{ $sort: { createdAt: -1, _id: -1 } },
+				{
+					$facet: {
+						list: [
+							{ $skip: (input.page - 1) * input.limit },
+							{ $limit: input.limit },
+							{
+								$lookup: {
+									from: 'members',
+									localField: 'memberId',
+									foreignField: '_id',
+									pipeline: [{ $project: { memberFullName: 1 } }],
+									as: 'admin',
+								},
+							},
+							{ $addFields: { adminName: { $first: '$admin.memberFullName' } } },
+							{ $project: { admin: 0 } },
+						],
+						metaCounter: [{ $count: 'total' }],
+					},
+				},
+			])
+			.exec();
+		return result as AuditLogs;
 	}
 }

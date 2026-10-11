@@ -18,6 +18,7 @@ import { NotificationModule } from '../notification/notification.module';
 import { BullModule } from '@nestjs/bullmq';
 import { BOOKING_QUEUE, BookingJobs } from './booking.jobs';
 import { BookingProcessor } from './booking.processor';
+import { AccessLogModule } from '../access-log/access-log.module';
 
 /**
  * booking → clinic, chat (the booking lines in the patient's room). The Treatment and Doctor
@@ -39,6 +40,7 @@ import { BookingProcessor } from './booking.processor';
 		ChatModule,
 		AiModule,
 		NotificationModule,
+		AccessLogModule,
 		BullModule.registerQueue({ name: BOOKING_QUEUE }),
 	],
 	providers: [

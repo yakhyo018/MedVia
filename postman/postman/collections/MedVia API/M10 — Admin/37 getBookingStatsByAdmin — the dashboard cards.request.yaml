@@ -1,0 +1,29 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query { getBookingStatsByAdmin { today waitingForClinic last14Days { date count } languages { lang count share } } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const s = gql.getBookingStatsByAdmin || {};
+      const seoulToday = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+      pm.test('today counts this request', () => pm.expect(s.today).to.be.at.least(1));
+      pm.test('it waits for the clinic', () => pm.expect(s.waitingForClinic).to.be.at.least(1));
+      pm.test('14 days ending today (Seoul)', () => pm.expect([(s.last14Days || []).length, ((s.last14Days || [])[13] || {}).date]).to.eql([14, seoulToday]));
+      pm.test('today in the chart too', () => pm.expect(((s.last14Days || [])[13] || {}).count).to.eql(s.today));
+      pm.test('language shares add up to 1', () => pm.expect((s.languages || []).reduce((sum, l) => sum + l.share, 0)).to.be.closeTo(1, 0.01));
+    language: text/javascript
+order: 37000
