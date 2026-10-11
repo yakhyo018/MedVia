@@ -102,6 +102,10 @@ export class Clinic {
 	@Field(() => Int, { nullable: true })
 	clinicReviews?: number;
 
+	/** The nightly "Recommended" score (batch RANK); 0 before the first run. */
+	@Field(() => Float, { nullable: true })
+	clinicScore?: number;
+
 	@Field(() => String)
 	memberId!: ObjectId;
 

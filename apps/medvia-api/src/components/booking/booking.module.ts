@@ -15,6 +15,9 @@ import TreatmentSchema from '../../schemas/Treatment.model';
 import DoctorSchema from '../../schemas/Doctor.model';
 import MemberSchema from '../../schemas/Member.model';
 import { NotificationModule } from '../notification/notification.module';
+import { BullModule } from '@nestjs/bullmq';
+import { BOOKING_QUEUE, BookingJobs } from './booking.jobs';
+import { BookingProcessor } from './booking.processor';
 
 /**
  * booking → clinic, chat (the booking lines in the patient's room). The Treatment and Doctor
@@ -36,8 +39,16 @@ import { NotificationModule } from '../notification/notification.module';
 		ChatModule,
 		AiModule,
 		NotificationModule,
+		BullModule.registerQueue({ name: BOOKING_QUEUE }),
 	],
-	providers: [SlotResolver, SlotService, BookingResolver, BookingService],
-	exports: [BookingService],
+	providers: [
+		SlotResolver,
+		SlotService,
+		BookingResolver,
+		BookingService,
+		BookingJobs,
+		BookingProcessor,
+	],
+	exports: [BookingService, BookingJobs],
 })
 export class BookingModule {}

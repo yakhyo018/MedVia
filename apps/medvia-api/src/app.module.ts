@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
+import { BullModule } from '@nestjs/bullmq';
 import { AppController } from './app.controller';
 import { AppResolver } from './app.resolver';
 import { AppService } from './app.service';
@@ -36,6 +37,14 @@ import { T } from './libs/types/common';
 		}),
 		DatabaseModule,
 		RedisModule,
+		// The job queue (M9) on the same Redis. maxRetriesPerRequest: null is what BullMQ
+		// requires for its workers' blocking reads; keys live under `queue:<name>:…`.
+		BullModule.forRootAsync({
+			useFactory: () => ({
+				connection: { url: process.env.REDIS_URL, maxRetriesPerRequest: null },
+				prefix: 'queue',
+			}),
+		}),
 		ComponentsModule,
 	],
 	controllers: [AppController],

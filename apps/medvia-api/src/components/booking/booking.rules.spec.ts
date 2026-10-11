@@ -12,10 +12,14 @@ import {
 	bookableStarts,
 	bookingScope,
 	checkTransition,
+	confirmIsReminder,
 	effectiveSlotStatus,
 	effectiveStatus,
+	expiryDueFilter,
 	makeBookingCode,
 	planSlotStarts,
+	reminderAt,
+	reminderDueFilter,
 	respondDeadline,
 	seoulDateOf,
 	seoulMonthRange,
@@ -357,5 +361,35 @@ describe('lists', () => {
 
 	it('makes a code from the Seoul year and six digits', () => {
 		expect(makeBookingCode(at('2026-12-31T16:00:00Z'), () => 0.0625)).toBe('MV-2027-062500');
+	});
+});
+
+describe('the booking queue', () => {
+	const now = new Date('2026-09-21T01:00:00Z');
+	const hours = (h: number) => new Date(now.getTime() + h * 60 * 60_000);
+
+	it('reminds a day before the visit', () => {
+		expect(reminderAt(hours(30))).toEqual(hours(6));
+	});
+
+	it('treats a confirmation inside the last day as the reminder', () => {
+		expect(confirmIsReminder(hours(23), now)).toBe(true);
+		expect(confirmIsReminder(hours(24), now)).toBe(true);
+		expect(confirmIsReminder(hours(25), now)).toBe(false);
+	});
+
+	it('expires only PENDING bookings whose deadline has passed', () => {
+		expect(expiryDueFilter(now)).toEqual({
+			bookingStatus: BookingStatus.PENDING,
+			respondDeadline: { $lte: now },
+		});
+	});
+
+	it('reminds a CONFIRMED visit within the next day, once', () => {
+		expect(reminderDueFilter(now)).toEqual({
+			bookingStatus: BookingStatus.CONFIRMED,
+			bookingRemindedAt: null,
+			bookingDate: { $gt: now, $lte: hours(24) },
+		});
 	});
 });

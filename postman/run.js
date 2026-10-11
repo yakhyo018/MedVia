@@ -101,6 +101,8 @@ function loadEnvironment(collectionDir) {
 	};
 
 	override('baseUrl', process.env.BASE_URL);
+	// The batch app (M9): its /dev/run endpoint runs a scheduled batch now.
+	override('batchUrl', process.env.BATCH_URL);
 
 	// Admin credentials come from .env and live only in this process's memory. They are
 	// never written into the Postman YAML files, which are committed to git.

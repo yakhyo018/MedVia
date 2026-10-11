@@ -33,18 +33,24 @@ import { NotificationService } from '../notification/notification.service';
 import { seoulWhen } from '../notification/notification.rules';
 import { NotificationType } from '../../libs/enums/notification.enum';
 import { SlotService } from './slot.service';
+import { BookingJobs } from './booking.jobs';
 import {
 	actorOf,
 	bookingScope,
 	checkTransition,
+	confirmIsReminder,
 	effectiveStatus,
+	expiryDueFilter,
 	makeBookingCode,
 	MAX_PENDING_REQUESTS,
+	reminderAt,
+	reminderDueFilter,
 	respondDeadline,
 	ScopeIds,
 	slotEffect,
 	slotsNeeded,
 	snapshotConsents,
+	SWEEP_BATCH,
 	hasConsent,
 	statusMatch,
 	tabMatch,
@@ -104,6 +110,7 @@ export class BookingService {
 		private readonly chatService: ChatService,
 		private readonly aiService: AiService,
 		private readonly notificationService: NotificationService,
+		private readonly jobs: BookingJobs,
 	) {}
 
 	/* ───────────────────────── patient ───────────────────────── */
@@ -187,6 +194,8 @@ export class BookingService {
 				BookingActor.PATIENT,
 				treatment.treatmentName,
 			);
+			// The clinic has until respondDeadline; the job expires the request at that moment.
+			this.jobs.scheduleExpiry(created._id, deadline);
 			// Only with the optional AI_SUMMARY consent; not awaited — the patient does not wait for AI.
 			if (hasConsent(bookingConsents, BookingConsentType.AI_SUMMARY)) {
 				void this.writeAiSummary(created._id, input.questionnaire.answers);
@@ -286,6 +295,9 @@ export class BookingService {
 		if (to === BookingStatus.DECLINED) set.bookingDeclineReason = reason;
 		if (to === BookingStatus.CANCELLED) set.cancelledBy = actor;
 		if (to === BookingStatus.COMPLETED) set.completedAt = now;
+		if (to === BookingStatus.CONFIRMED && confirmIsReminder(booking.bookingDate, now)) {
+			set.bookingRemindedAt = now;
+		}
 
 		const filter: T = { _id: booking._id, bookingStatus: booking.bookingStatus };
 		if (booking.bookingStatus === BookingStatus.PENDING) filter.respondDeadline = { $gt: now };
@@ -327,6 +339,9 @@ export class BookingService {
 			treatment?.treatmentName ?? '',
 			reason,
 		);
+		if (to === BookingStatus.CONFIRMED && !set.bookingRemindedAt) {
+			this.jobs.scheduleReminder(booking._id, reminderAt(booking.bookingDate));
+		}
 
 		if (actor === BookingActor.ADMIN) {
 			await this.auditLogService.record({
@@ -378,27 +393,75 @@ export class BookingService {
 		if (result.modifiedCount !== 1) throw new BadRequestException(Messages.ALREADY_REVIEWED);
 	}
 
+	/* ───────────────────────── the booking queue ───────────────────────── */
+
+	/**
+	 * PENDING past its deadline → EXPIRED, the slots released, the patient told. One booking
+	 * (its delayed job) or a page of them (the sweep). Each expiry is a conditional write, so the
+	 * job, the sweep and a lazy expiry racing for one booking expire it — and notify — once.
+	 */
+	public async expireDue(bookingId?: string): Promise<number> {
+		const now = new Date();
+		const due = await this.bookingModel
+			.find({ ...expiryDueFilter(now), ...this.onlyOne(bookingId) })
+			.limit(SWEEP_BATCH)
+			.lean()
+			.exec();
+		let expired = 0;
+		for (const booking of due) if (await this.expire(booking, now)) expired++;
+		return expired;
+	}
+
+	/**
+	 * "Your visit is coming up", a day before. Claimed first — bookingRemindedAt is set by a
+	 * conditional update — then sent: two workers never both send it. The price is at most once:
+	 * a crash between the claim and the notification loses this reminder.
+	 */
+	public async remindDue(bookingId?: string): Promise<number> {
+		const now = new Date();
+		const due = await this.bookingModel
+			.find({ ...reminderDueFilter(now), ...this.onlyOne(bookingId) }, { _id: 1 })
+			.limit(SWEEP_BATCH)
+			.lean()
+			.exec();
+		let reminded = 0;
+		for (const { _id } of due) {
+			const claimed = await this.bookingModel
+				.findOneAndUpdate(
+					{ _id, ...reminderDueFilter(now) },
+					{ $set: { bookingRemindedAt: now } },
+					{ new: true },
+				)
+				.lean()
+				.exec();
+			if (!claimed) continue;
+			const { params } = await this.paramsOf(claimed, await this.treatmentNameOf(claimed));
+			await this.notificationService.notify({
+				type: NotificationType.VISIT_REMINDER,
+				receiverId: claimed.memberId,
+				refId: claimed._id,
+				params,
+			});
+			reminded++;
+		}
+		return reminded;
+	}
+
 	/* ───────────────────────── helpers ───────────────────────── */
 
 	/**
 	 * The bell for a booking event, after it committed. A request is news for the clinic; a
-	 * confirm, decline or "how was your visit?" for the patient; a cancel for whoever did not
-	 * cancel (an admin's cancel for both). NotificationService never throws.
+	 * confirm, decline, expiry or "how was your visit?" for the patient; a cancel for whoever
+	 * did not cancel (an admin's cancel for both). NotificationService never throws.
 	 */
 	private async notifyBooking(
 		booking: T,
 		status: BookingStatus,
-		actor: BookingActor,
+		actor: BookingActor | null,
 		treatmentName: string,
 		reason?: string,
 	): Promise<void> {
-		const clinic = await this.clinicService.findClinicCard(booking.clinicId);
-		const params: T = {
-			clinicName: clinic?.clinicName ?? '',
-			treatmentName,
-			when: seoulWhen(booking.bookingDate),
-			reason,
-		};
+		const { clinic, params } = await this.paramsOf(booking, treatmentName, reason);
 		const toPatient = (type: NotificationType) =>
 			this.notificationService.notify({
 				type,
@@ -426,16 +489,47 @@ export class BookingService {
 		if (status === BookingStatus.DECLINED)
 			return await toPatient(NotificationType.BOOKING_DECLINED);
 		if (status === BookingStatus.COMPLETED) return await toPatient(NotificationType.REVIEW_REQUEST);
+		if (status === BookingStatus.EXPIRED) return await toPatient(NotificationType.BOOKING_EXPIRED);
 		if (status === BookingStatus.CANCELLED) {
 			if (actor !== BookingActor.PATIENT) await toPatient(NotificationType.BOOKING_CANCELLED);
 			if (actor !== BookingActor.CLINIC) await toClinic(NotificationType.BOOKING_CANCELLED);
 		}
 	}
 
-	/** Lazy expiry: PENDING past its deadline becomes EXPIRED and lets go of its slots. */
-	private async expire(booking: T, now: Date): Promise<void> {
+	/** The pieces of a booking's notification text. */
+	private async paramsOf(booking: T, treatmentName: string, reason?: string) {
+		const clinic = await this.clinicService.findClinicCard(booking.clinicId);
+		const params: T = {
+			clinicName: clinic?.clinicName ?? '',
+			treatmentName,
+			when: seoulWhen(booking.bookingDate),
+			reason,
+		};
+		return { clinic, params };
+	}
+
+	private async treatmentNameOf(booking: T): Promise<string> {
+		const treatment = await this.treatmentModel
+			.findById(booking.treatmentId, { treatmentName: 1 })
+			.lean()
+			.exec();
+		return treatment?.treatmentName ?? '';
+	}
+
+	/** A job names its booking; a sweep does not. */
+	private onlyOne(bookingId?: string): T {
+		return bookingId ? { _id: this.toObjectId(bookingId) } : {};
+	}
+
+	/**
+	 * PENDING past its deadline becomes EXPIRED and lets go of its slots; the patient is told.
+	 * Called lazily (a status change on an expired request), by the job and by the sweep —
+	 * whichever writes first. Returns whether this call was the one that expired it.
+	 */
+	private async expire(booking: T, now: Date): Promise<boolean> {
+		let expired: T | null = null;
 		await this.slotService.inTransaction(async (session) => {
-			const expired = await this.bookingModel
+			expired = await this.bookingModel
 				.findOneAndUpdate(
 					{
 						_id: booking._id,
@@ -458,6 +552,10 @@ export class BookingService {
 				.exec();
 			if (expired) await this.slotService.applyBookingEffect(expired, 'RELEASE', session);
 		});
+		if (!expired) return false;
+		const done = expired as T;
+		await this.notifyBooking(done, BookingStatus.EXPIRED, null, await this.treatmentNameOf(done));
+		return true;
 	}
 
 	/** The token's member → the filter of the bookings they may see. */

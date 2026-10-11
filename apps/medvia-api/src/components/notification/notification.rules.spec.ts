@@ -21,6 +21,12 @@ describe('groups and switches', () => {
 		);
 	});
 
+	it('gives the visit reminder its own switch', () => {
+		const remindersOff = { bookingUpdates: true, visitReminders: false };
+		expect(allowedBySettings(NotificationType.VISIT_REMINDER, remindersOff)).toBe(false);
+		expect(allowedBySettings(NotificationType.BOOKING_EXPIRED, remindersOff)).toBe(true);
+	});
+
 	it('treats a missing setting as on', () => {
 		expect(allowedBySettings(NotificationType.NEW_MESSAGE, undefined)).toBe(true);
 		expect(allowedBySettings(NotificationType.NEW_MESSAGE, {})).toBe(true);

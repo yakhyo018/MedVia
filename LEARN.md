@@ -2153,3 +2153,137 @@ The server stays language-agnostic: the frontend renders the line in the reader'
 **5. Why one socket gateway for chat and notifications?**
 
 One connection, one handshake auth and one expiry rule per client; per-member audiences make both features a plain `emit` to a room. Two gateways would double the connections and duplicate the auth.
+
+## M9 — Batch (BullMQ delayed jobs + scheduled batch)
+
+### 1. Why a queue, if bookings are already correct without one
+
+Since M5 a request past its deadline is *read* as EXPIRED and an expired hold is *read* as free
+(lazy expiry), so nobody can double-book without a background job. What lazy expiry cannot do:
+
+- **tell anyone** — the patient learns "the clinic didn't answer" only by opening My Bookings;
+- **act at a moment** — "your visit is coming up" must go out a day before, whether or not anyone
+  touches the booking;
+- **keep the stored data honest** — reports and the batch read the stored status.
+
+A delayed job is the natural tool: at the moment the API knows the time ("the request expires at
+respondDeadline"), it puts a job on the queue that runs at that time.
+
+### 2. Producer, consumer, and where each runs
+
+- **Producer** (`booking.jobs.ts`): `createBooking` adds `expire-<id>` delayed until the deadline;
+  a confirm adds `remind-<id>` delayed until a day before the visit. A custom `jobId` makes adding
+  twice harmless. The call is **not awaited and never throws**: a booking must not fail because
+  Redis is down.
+- **Consumer** (`booking.processor.ts`): a BullMQ worker **inside the API process**. Each job is
+  two or three writes and needs BookingService's transaction, notifications and socket push —
+  running it in the batch would mean importing the API's module graph or copying booking code.
+  The queue decouples the two: moving the worker to its own process later is moving one file.
+- **Batch app**: the whole-collection work (recount, rank, slot release) that would compete with
+  requests for the API's event loop.
+
+### 3. Every job has a sweep
+
+A delayed job can be lost: Redis restarted without persistence, the producer's `add` failed, the
+job failed three times. So each job type has a **sweep** that finds what is due regardless of
+jobs: expiry every 5 minutes, reminders every hour. The sweeps are **BullMQ job schedulers**,
+not `@Cron`: with three API instances a cron fires three times; a scheduled job is taken by one
+worker.
+
+### 4. Idempotent consumers: one effect however many times the job runs
+
+BullMQ delivers *at least once* (a worker that dies mid-job gets its job retried). Three doors
+can reach one expired request — the lazy expiry, its job, the sweep — and two sweeps can run at
+once. The guard is the same as everywhere since M5: **a conditional write**.
+
+- Expiry: `findOneAndUpdate({ _id, bookingStatus: PENDING, respondDeadline: { $lte: now } })`.
+  Only the call that changed the document notifies; the others find nothing.
+- Reminder: **claim, then send** — `bookingRemindedAt` is set with a filter that includes
+  "not reminded yet", and only the winner sends. That is *at most once*: a crash between the
+  claim and the notification loses this reminder. The alternative (send, then mark) is *at least
+  once* — a duplicate. For a reminder, missing one is better than sending two.
+- A confirm inside the last day sets `bookingRemindedAt` at once: the confirmation is the reminder.
+
+### 5. The batch: three jobs, logged
+
+| Batch | When (Seoul) | What |
+| --- | --- | --- |
+| `SLOT_RELEASE` | every 5 min | HELD past `holdExpiresAt` with no booking → OPEN (housekeeping: the API already reads them as free) |
+| `RECOUNT` | 02:30 | rebuild followers, min price + treatment names, ratings from their sources; write only what is wrong; the result names the drifted fields |
+| `RANK` | 03:00 | `clinicScore` / `doctorScore` for "Recommended" — after RECOUNT, so it reads correct counters |
+
+Every run goes through `BatchLogService.run`: a `batchLogs` row RUNNING → SUCCESS / FAILED with a
+result ("fixed 2 of 186 (clinicFollowers 1, clinicMinPrice 1)"), a TTL of 30 days, and no overlap
+(a still-RUNNING row of the same batch skips the run). After a write the batch clears the API's
+cache keys it made stale — `SCAN` + `UNLINK`, never `KEYS`.
+
+The first RECOUNT on the dev database fixed 77 clinics and 22 doctors: rows created before M6 had
+no `clinicRating` / `clinicTreatmentNames` at all. The second run fixed 0 — idempotent.
+
+### 6. The "Recommended" score
+
+`score = 0.6 · bayes/5 + 0.25 · activity + 0.15 · popularity`, each part in [0, 1].
+
+- **Bayesian average** `(v·R + m·C) / (v + m)`, `m = 5`, `C` = the review-weighted mean: a clinic
+  with one 5.0 review (≈ 4.58) no longer beats one with two hundred at 4.8 (≈ 4.79). A clinic with
+  no reviews gets the mean, not zero — fair to newcomers.
+- **activity** = completed visits in 90 days, **popularity** = followers, both as
+  `log(1+x) / log(1+max)`: a share of the leader on a log scale, so the biggest clinic does not
+  flatten everyone else.
+- Nightly, because it joins three collections — per request it would be expensive and would not
+  fit the cached list pages.
+
+### 7. Testing time
+
+Nobody waits 24 hours in a test. Test-support mutations (only with `ENABLE_TEST_SUPPORT`, never in
+production) fake the clock, never the rules: `devShiftBookingTime` (M6), `devPromoteJob` (run a
+delayed job now; "missing" proves the producer never queued it), `devRunSweep(name, times)` —
+`times: 3` runs three sweeps **at once**, the race the conditional writes exist for —
+`devExpireHolds`, `devDriftClinic`. The batch has `POST /dev/run/:name` under the same locks.
+
+| Broken on purpose | Caught by |
+| --- | --- |
+| the producer does not queue the expiry job | "the request has its expiry job" (missing), B never expires |
+| the reminder claim without its condition | "G was reminded once" — three concurrent sweeps sent it twice |
+| the expiry write without its condition | "H expired once" — three concurrent sweeps notified twice |
+| `VISIT_REMINDER` not tied to the switch | "Yahyo's switch silenced it" |
+| SLOT_RELEASE filter | "released at least one hold" |
+| RECOUNT skips followers | "names the drifted fields", "1 follower" |
+| Bayes replaced by the raw rating | Jest "200 reviews at 4.8 above one at 5.0" |
+
+Two of these survived the first suite: the claim and the expiry write are each backed by the
+sweep's own filter, so sequential requests could not reach them. Only the concurrent sweeps did —
+a race guard is proven only by a race.
+
+### Interview questions and answers
+
+**1. Your queue delivers at least once. How do you avoid sending a reminder twice?**
+
+The consumer is idempotent: it claims the booking with a conditional update ("CONFIRMED, not reminded yet" → set `bookingRemindedAt`) and only the winner sends. Two workers, a retry or the sweep find nothing to claim. The trade-off is at-most-once — a crash between claim and send loses one reminder, which is better than two.
+
+**2. Why does every delayed job also have a sweep?**
+
+Jobs live in Redis and can be lost — a restart without persistence, a failed `add`, a job that failed all retries. The sweep finds due work from the database, the source of truth, so a lost job only means a delay of one sweep interval.
+
+**3. Why run the worker inside the API and not in the batch app?**
+
+The jobs are tiny and need the booking module's transaction, notifications and socket push. In the batch they would mean importing half the API or duplicating its logic. The queue separates producer and consumer, so the worker can move to its own process later without changing the producer. Heavy whole-collection work stays in the batch.
+
+**4. Why a job scheduler instead of `@Cron` for the sweeps?**
+
+`@Cron` runs in every process: three API instances, three sweeps. A BullMQ job scheduler puts one job on the queue per interval and one worker takes it.
+
+**5. How does the ranking avoid "one 5-star review wins"?**
+
+A Bayesian average: `(v·R + m·C)/(v + m)` pulls a rating with few reviews towards the global mean, so the rating counts in proportion to the evidence behind it. IMDb's Top 250 uses the same formula.
+
+### Postscript: a rate limit that met its own test suite
+
+After M9 the one-shot suite started failing at `M6 / login — admin` with "Too Many Requests",
+then everything after it. The login limit is 5 per minute per IP + email — and every folder signs
+in as the same admin. A fast run put six admin sign-ins in one minute; the throttler then blocks
+the key for another minute, so every later folder failed too. The limit was right (a real admin
+never signs in six times a minute); the suite was wrong. Each folder's admin login now reuses a
+token from an earlier folder while it has more than 5 minutes left, and skips the request. The
+lesson: when a security control fails a test, first ask which of the two is behaving unlike
+production.

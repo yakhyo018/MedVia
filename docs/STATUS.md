@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-10 — M8 closed (M8a, M8b, M8c merged). Next: M9 — Batch._
+_Last updated: 2026-10-11 — M9 built and green on `feature/batch`; waiting for the user's Postman run._
 
 ## The project
 
@@ -37,13 +37,44 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M10 | Admin + audit log + faker seed | |
 | AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
 
-## Next step: M9 — Batch (collection review first)
+## Next step: the user runs M9 in Postman, then commit + merge
 
-M8 is closed. M9 starts with the collection review gate: present what the batch introduces (jobs,
-queues, any new collection or fields) before any code. Candidates already promised to M9 in the
-docs: booking expiry / visit reminders (VISIT_REMINDER notification + `memberNotify.visitReminders`),
-recounts for `clinicFollowers` and `clinicMinPrice`, translation retries as a job, a durable
-retry for lost notifications, "new post by someone you follow" fan-out.
+M9 is built on `feature/batch` (nothing committed). Both apps must run for the M9 folder:
+`npm run start:dev` (API, :3000) and `npm run start:dev:batch` (batch, :3001; `batchUrl` in the
+Postman environment, `BATCH_URL` overrides it for Newman).
+
+### Built
+- **API queue** (`components/booking/booking.jobs.ts`, `booking.processor.ts`): `bullmq@6` +
+  `@nestjs/bullmq`, keys under `queue:`. `expire-<id>` delayed to respondDeadline on request,
+  `remind-<id>` a day before the visit on confirm; fire-and-forget producer. Sweeps as job
+  schedulers (expiry 5 min, reminders 1 h). Worker inside the API calls
+  `BookingService.expireDue/remindDue` (conditional writes; reminder = claim then send).
+- Notifications `BOOKING_EXPIRED` (bookingUpdates) and `VISIT_REMINDER` (visitReminders).
+  `Booking.bookingRemindedAt`; a confirm inside the last day counts as the reminder.
+- **Batch** (`apps/medvia-batch`): `SLOT_RELEASE` (*/5), `RECOUNT` (02:30), `RANK` (03:00), Seoul
+  time; `batchLogs` (TTL 30 days, no overlapping runs); cache cleared with SCAN + UNLINK.
+  `clinicScore` / `doctorScore` + "Recommended" sort (`rank.rules.ts`, Bayesian m = 5).
+- Test support: `devPromoteJob`, `devRunSweep(name, times)`, `devExpireHolds`, `devDriftClinic`;
+  batch `POST /dev/run/:name`. `testSupportEnabled` moved to `libs/config.ts`.
+- Postman **`M9 — Batch`** (order 13000, 82 requests, 143 assertions) from
+  `postman/generators/gen-m9.js`. Mutation checks: 8 mutants, all killed (two only by the
+  concurrent sweeps). LEARN.md and DECISIONS.md written.
+- `.claude/launch.json` (untracked) starts the batch from the desktop app's preview.
+
+- Last runs (2026-10-11): every folder green run one by one (**1398** assertions, M0–M9),
+  `test:socket` 17/17, Jest 199/199, typecheck, `lint:check`, `build` clean.
+- **Login throttle in a full run — fixed (2026-10-11).** The limit is 5 sign-ins per minute per
+  IP + email (since M1); every folder signed in as the same admin, and a fast run did 6 in one
+  minute (M6 failed, then M7 onwards as the key stayed blocked). Every folder's
+  `login — admin` but M1's now reuses a still-valid admin token (≥ 5 min left, role ADMIN) and
+  skips the request (`postman/generators/reuse-admin.js`). One-shot `npm run test:api` green:
+  795 requests, 1374 assertions (the skipped logins' own tests do not run).
+
+### Left
+1. The user runs `M9 — Batch` in Postman (both apps running).
+2. Commit (stage by name; not `apps/medvia-batch/image/`, not `.claude/`), merge `--no-ff` into
+   `develop`, close M9 in the table, push, delete the branch.
+3. Next milestone: M10 — Admin + audit log + faker seed (collection review first).
 
 ### What M8c left behind
 - Socket namespace is **`/live`** (was `/chat`) — the frontend must connect there.

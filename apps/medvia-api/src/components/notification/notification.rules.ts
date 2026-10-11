@@ -14,6 +14,8 @@ export const GROUP_OF: Record<NotificationType, NotificationGroup> = {
 	[NotificationType.BOOKING_CONFIRMED]: BOOKING,
 	[NotificationType.BOOKING_DECLINED]: BOOKING,
 	[NotificationType.BOOKING_CANCELLED]: BOOKING,
+	[NotificationType.BOOKING_EXPIRED]: BOOKING,
+	[NotificationType.VISIT_REMINDER]: BOOKING,
 	[NotificationType.REVIEW_REQUEST]: REVIEW,
 	[NotificationType.NEW_MESSAGE]: CHAT,
 	[NotificationType.INQUIRY_ANSWERED]: INQUIRY,
@@ -26,11 +28,15 @@ export const GROUP_OF: Record<NotificationType, NotificationGroup> = {
  * Which of the member's switches (memberNotify) silences a type. A type without a switch is
  * always delivered — an answer from support, for one, is never optional.
  */
-export const SETTING_OF: Partial<Record<NotificationType, 'bookingUpdates' | 'chatMessages'>> = {
+export const SETTING_OF: Partial<
+	Record<NotificationType, 'bookingUpdates' | 'visitReminders' | 'chatMessages'>
+> = {
 	[NotificationType.BOOKING_REQUESTED]: 'bookingUpdates',
 	[NotificationType.BOOKING_CONFIRMED]: 'bookingUpdates',
 	[NotificationType.BOOKING_DECLINED]: 'bookingUpdates',
 	[NotificationType.BOOKING_CANCELLED]: 'bookingUpdates',
+	[NotificationType.BOOKING_EXPIRED]: 'bookingUpdates',
+	[NotificationType.VISIT_REMINDER]: 'visitReminders',
 	[NotificationType.REVIEW_REQUEST]: 'bookingUpdates',
 	[NotificationType.NEW_MESSAGE]: 'chatMessages',
 };
@@ -77,6 +83,16 @@ export function renderNotification(
 			return {
 				title: 'Booking cancelled',
 				desc: `${s('treatmentName')} on ${s('when')} was cancelled.`,
+			};
+		case NotificationType.BOOKING_EXPIRED:
+			return {
+				title: 'Booking request expired',
+				desc: `${s('clinicName')} didn't answer in time for ${s('when')}. The time was released.`,
+			};
+		case NotificationType.VISIT_REMINDER:
+			return {
+				title: 'Your visit is coming up',
+				desc: `${s('treatmentName')} at ${s('clinicName')} · ${s('when')}`,
 			};
 		case NotificationType.REVIEW_REQUEST:
 			return {

@@ -115,6 +115,12 @@ const BookingSchema = new Schema(
 			required: true,
 		},
 
+		// "Your visit is coming up" was sent (or the confirmation came inside the last day).
+		// Set by a conditional update, so two workers never send the reminder twice.
+		bookingRemindedAt: {
+			type: Date,
+		},
+
 		// A review needs a COMPLETED booking, written within 30 days of this.
 		completedAt: {
 			type: Date,
@@ -172,5 +178,12 @@ BookingSchema.index({ doctorId: 1, bookingDate: -1 });
 
 // Bookings per treatment this month, for the clinic's treatment table.
 BookingSchema.index({ treatmentId: 1, bookingDate: 1 });
+
+// The expiry sweep: PENDING past respondDeadline.
+BookingSchema.index({ bookingStatus: 1, respondDeadline: 1 });
+
+// The reminder sweep: CONFIRMED with the visit in the next day; also the rank's
+// "COMPLETED in the last 90 days".
+BookingSchema.index({ bookingStatus: 1, bookingDate: 1 });
 
 export default BookingSchema;
