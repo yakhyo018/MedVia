@@ -18,7 +18,8 @@ import { NoticeModule } from './notice/notice.module';
 import { InquiryModule } from './inquiry/inquiry.module';
 import { NotificationModule } from './notification/notification.module';
 import { RealtimeModule } from './realtime/realtime.module';
-import { TestSupportModule, testSupportEnabled } from './test-support/test-support.module';
+import { TestSupportModule } from './test-support/test-support.module';
+import { testSupportEnabled } from '../libs/config';
 
 @Module({
 	imports: [

@@ -13,6 +13,22 @@ body:
     variables: |-
       { "input": { "memberEmail": "{{adminEmail}}", "memberPassword": "{{adminPassword}}" } }
 scripts:
+  - type: beforeRequest
+    code: |-
+      const adminClaims = (() => {
+        const part = (pm.environment.get('adminToken') || '').split('.')[1] || '';
+        try {
+          const b64 = part.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((part.length + 3) % 4);
+          return JSON.parse(atob(b64));
+        } catch (e) {
+          return null;
+        }
+      })();
+      if (adminClaims && adminClaims.memberType === 'ADMIN' && adminClaims.exp * 1000 - Date.now() > 5 * 60000) {
+        pm.environment.set('adminId', adminClaims.sub);
+        pm.execution.skipRequest();
+      }
+    language: text/javascript
   - type: afterResponse
     code: |-
       const body = pm.response.json();

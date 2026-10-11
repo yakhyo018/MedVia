@@ -260,3 +260,23 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | TTL index on `updatedAt`, 90 days (`NOTIFICATION_TTL_SECONDS`). | Not history; no cleanup job. | — | Keep forever; a cron. |
 | `RealtimeGateway` (`/live`) replaces the chat gateway: `member:<id>` for every member, `clinic:<id>` for clinic accounts; doctors and admins may connect. | One socket for chat and the bell; one auth. | Clients must move from `/chat` to `/live`. | A second gateway. |
 | Badge = `countDocuments({ receiverId, WAIT })` on an index; mark-read by ids or all, always filtered by the token's member. | Simple and exact at this scale; another member's ids change nothing. | A count per page load. | A counter field on the member. |
+
+## M9 — Batch
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| `bullmq` + `@nestjs/bullmq` for delayed jobs, on the existing Redis (keys under `queue:`). | Delayed jobs, retries with backoff, dedupe by `jobId`; no new infrastructure. | Jobs are lost with Redis — hence the sweeps. | `@nestjs/schedule` polling only; Agenda (Mongo); legacy `bull`. |
+| Per-booking jobs (`expire-<id>`, `remind-<id>`) processed by a worker **inside the API**. | They reuse BookingService (transaction, notifications, socket push) — no shared "core" refactor, no copied logic. | Jobs share the API's event loop (they are a few writes each). | Worker in the batch app with a shared core; batch calling the API. |
+| The producer is fire-and-forget and never throws. | A booking must not fail because Redis is down. | A lost job waits for the sweep. | Await `add` and fail the booking. |
+| Every job has a sweep (expiry 5 min, reminders 1 h) as a BullMQ job scheduler. | Lost jobs are found from the database; one run across many API instances. | — | `@Cron` in the API (runs once per instance). |
+| Conditional writes make every consumer idempotent; reminder = claim then send (at most once). | Jobs run at least once; three doors reach one expiry. | A crash between claim and send loses a reminder. | Send then mark (duplicates). |
+| New notifications `BOOKING_EXPIRED` (patient only, `bookingUpdates`) and `VISIT_REMINDER` (`visitReminders`). | The patient must hear that the clinic did not answer; `memberNotify.visitReminders` was already on the member. | — | No expiry notice; the clinic told too. |
+| No chat line for an expiry. | The notification and My Bookings show it; the booking-line rules stay unchanged. | — | "Request expired" in the room. |
+| A confirm inside the last day sets `bookingRemindedAt`. | The confirmation is the reminder. | — | A reminder minutes after the confirm. |
+| Batch app: `SLOT_RELEASE` (5 min), `RECOUNT` (02:30), `RANK` (03:00), Seoul time. | Whole-collection work off the API's loop; RANK reads what RECOUNT fixed. | One batch instance assumed (overlap guard is per row, not a lock). | Everything in the API. |
+| `batchLogs` (TTL 30 days), RUNNING → SUCCESS/FAILED, no overlapping run. | "Did last night's RANK work?"; M10's admin screen reads it. | A crashed run blocks its batch for up to 1 hour. | BullMQ job history only; no log. |
+| RECOUNT writes only wrong fields and reports which. | Shows real drift, not just a number; idempotent. | — | Rewrite every row. |
+| `clinicScore` / `doctorScore` (number) instead of the ER model's `clinicRank` (int); "Recommended" = sort by score. | The order comes from the score; the position is derived. | Scores are a day old. | Rank position; per-request ranking. |
+| Score = 0.6 Bayesian rating (m = 5) + 0.25 log completed visits (90 days) + 0.15 log followers. | One review cannot win; newcomers get the mean; big clinics do not flatten the rest. | The weights are a judgement call. | Sort by raw rating. |
+| Cut: auto NO_SHOW, translation retry job, follower fan-out, Socket.IO emitter from the batch, `BATCH_ROLLBACK`. | The clinic decides no-shows; translation heals on read; no screen for fan-out; batch notifications are not written. | The M7 Redis-adapter item stays open. | The ER model's full BatchName list. |
+| Test support: `devPromoteJob`, `devRunSweep(name, times)`, `devExpireHolds`, `devDriftClinic`; batch `POST /dev/run/:name`. | Time and races cannot be waited for in a suite; only the clock is faked. | Must never reach production — two locks (flag + NODE_ENV). | Real waiting; Jest with mocks. |

@@ -154,6 +154,12 @@ const ClinicSchema = new Schema(
 			default: 0,
 		},
 
+		// "Recommended": written nightly by the batch RANK job, never by the API. 0 until then.
+		clinicScore: {
+			type: Number,
+			default: 0,
+		},
+
 		memberId: {
 			type: Schema.Types.ObjectId,
 			required: true,
@@ -182,6 +188,9 @@ ClinicSchema.index({ memberId: 1 }, { unique: true });
 
 // Public list: equality on status first, then the default sort.
 ClinicSchema.index({ clinicStatus: 1, createdAt: -1 });
+
+// "Recommended": the live clinics by the nightly score.
+ClinicSchema.index({ clinicStatus: 1, clinicScore: -1 });
 
 // Admin verification queue: oldest submission first.
 ClinicSchema.index({ clinicStatus: 1, submittedAt: 1 });

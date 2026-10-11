@@ -377,3 +377,36 @@ export function makeBookingCode(now: Date, random: () => number = Math.random): 
 	const digits = String(Math.floor(random() * 1_000_000)).padStart(6, '0');
 	return `MV-${seoulDateOf(now).slice(0, 4)}-${digits}`;
 }
+
+/* ───────────────────────── the booking queue (M9) ───────────────────────── */
+
+export const REMIND_HOURS = 24;
+/** One sweep handles at most this many bookings; the next sweep takes the rest. */
+export const SWEEP_BATCH = 200;
+
+/** The reminder goes out a day before the visit. */
+export const reminderAt = (bookingDate: Date) =>
+	new Date(bookingDate.getTime() - REMIND_HOURS * HOUR);
+
+/**
+ * Confirmed less than a day before the visit: the confirmation itself is the reminder, and the
+ * booking is marked reminded at once — "your visit is coming up" minutes later would be noise.
+ */
+export const confirmIsReminder = (bookingDate: Date, now: Date) => reminderAt(bookingDate) <= now;
+
+/** PENDING past its deadline and not yet written as EXPIRED — the expiry sweep's filter. */
+export const expiryDueFilter = (now: Date): T => ({
+	bookingStatus: BookingStatus.PENDING,
+	respondDeadline: { $lte: now },
+});
+
+/**
+ * CONFIRMED, the visit within a day and still ahead, no reminder yet (`null` also matches a
+ * missing field). The sweep's filter and the claim's condition at once: a booking passes it
+ * only until the first worker sets bookingRemindedAt.
+ */
+export const reminderDueFilter = (now: Date): T => ({
+	bookingStatus: BookingStatus.CONFIRMED,
+	bookingRemindedAt: null,
+	bookingDate: { $gt: now, $lte: new Date(now.getTime() + REMIND_HOURS * HOUR) },
+});

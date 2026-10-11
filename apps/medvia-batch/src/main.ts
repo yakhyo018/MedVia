@@ -5,7 +5,7 @@ import { BatchModule } from './batch.module';
 async function bootstrap() {
 	const app = await NestFactory.create(BatchModule);
 
-	// Lets running jobs and connections close cleanly on SIGTERM (BullMQ workers in M9).
+	// Lets a running batch finish its writes and Redis / Mongo close cleanly on SIGTERM.
 	app.enableShutdownHooks();
 
 	const port = process.env.PORT_BATCH ?? 3001;

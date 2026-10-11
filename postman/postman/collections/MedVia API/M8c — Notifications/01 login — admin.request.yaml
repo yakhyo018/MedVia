@@ -19,6 +19,19 @@ scripts:
       const slotDate = new Date(stamp + 9 * 3600000 + 3 * 86400000).toISOString().slice(0, 10);
       pm.environment.set('slotDate', slotDate);
       ['10:00', '10:30', '11:00', '11:30'].forEach((t) => pm.environment.set('t' + t.replace(':', ''), new Date(slotDate + 'T' + t + ':00+09:00').toISOString()));
+      const adminClaims = (() => {
+        const part = (pm.environment.get('adminToken') || '').split('.')[1] || '';
+        try {
+          const b64 = part.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((part.length + 3) % 4);
+          return JSON.parse(atob(b64));
+        } catch (e) {
+          return null;
+        }
+      })();
+      if (adminClaims && adminClaims.memberType === 'ADMIN' && adminClaims.exp * 1000 - Date.now() > 5 * 60000) {
+        pm.environment.set('adminId', adminClaims.sub);
+        pm.execution.skipRequest();
+      }
     language: text/javascript
   - type: afterResponse
     code: |-

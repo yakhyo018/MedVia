@@ -1,0 +1,13 @@
+$kind: http-request
+url: '{{batchUrl}}/dev/run/SLOT_RELEASE'
+method: POST
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();
+      pm.test('status 201', () => pm.response.to.have.status(201));
+      pm.test('SLOT_RELEASE SUCCESS', () => pm.expect([body.batchName, body.batchStatus], body.batchResult).to.eql(['SLOT_RELEASE', 'SUCCESS']));
+      pm.test('logged with start and finish', () => pm.expect([!!body._id, !!body.startedAt, !!body.finishedAt]).to.eql([true, true, true]));
+      pm.test('released at least one hold', () => pm.expect(Number(((body.batchResult || '').match(/released (\d+)/) || [])[1])).to.be.at.least(1));
+    language: text/javascript
+order: 70000

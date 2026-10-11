@@ -101,6 +101,12 @@ const DoctorSchema = new Schema(
 			default: 0,
 		},
 
+		// "Recommended": written nightly by the batch RANK job, never by the API. 0 until then.
+		doctorScore: {
+			type: Number,
+			default: 0,
+		},
+
 		clinicId: {
 			type: Schema.Types.ObjectId,
 			required: true,
@@ -129,5 +135,8 @@ DoctorSchema.index({ clinicId: 1, doctorStatus: 1, createdAt: 1 });
 // Public doctor list: status first, then the default order. The active-clinic filter
 // (`clinicId: { $in: [...] }`) is applied to the rows this index hands over.
 DoctorSchema.index({ doctorStatus: 1, createdAt: -1 });
+
+// "Recommended": the live doctors by the nightly score.
+DoctorSchema.index({ doctorStatus: 1, doctorScore: -1 });
 
 export default DoctorSchema;

@@ -1,0 +1,26 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      query L($input: DoctorsInquiry!) { getDoctors(input: $input) { list { _id doctorScore } } }
+    variables: |-
+      { "input": { "page": 1, "limit": 50, "sort": "doctorScore" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const scores = ((gql.getDoctors || {}).list || []).map((d) => d.doctorScore);
+      pm.test('a page of doctors', () => pm.expect(scores.length).to.be.above(0));
+      pm.test('non-increasing', () => pm.expect(scores).to.eql([...scores].sort((a, b) => b - a)));
+    language: text/javascript
+order: 81000

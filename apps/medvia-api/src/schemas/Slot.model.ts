@@ -66,4 +66,7 @@ SlotSchema.index({ doctorId: 1, slotStart: 1 }, { unique: true });
 // The clinic's week view across all doctors.
 SlotSchema.index({ clinicId: 1, slotStart: 1 });
 
+// The batch SLOT_RELEASE sweep: holds that ran out.
+SlotSchema.index({ slotStatus: 1, holdExpiresAt: 1 });
+
 export default SlotSchema;

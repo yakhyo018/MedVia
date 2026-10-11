@@ -1,5 +1,12 @@
 import { Types } from 'mongoose';
 
+/**
+ * The Postman helpers (test-support mutations, the batch's /dev/run). Two locks: an explicit
+ * flag, and never in production even if the flag leaks there.
+ */
+export const testSupportEnabled = (): boolean =>
+	process.env.NODE_ENV !== 'production' && process.env.ENABLE_TEST_SUPPORT === 'true';
+
 export const availableMemberSorts = [
 	'createdAt',
 	'updatedAt',
@@ -15,6 +22,7 @@ export const availableClinicSorts = [
 	'clinicFollowers',
 	'clinicViews',
 	'clinicRating',
+	'clinicScore',
 ];
 
 /** Paths our own uploader returns. Anything else — an outside URL, `javascript:` — is refused. */
@@ -60,6 +68,7 @@ export const availableDoctorSorts = [
 	'doctorFollowers',
 	'doctorViews',
 	'doctorRating',
+	'doctorScore',
 ];
 
 /** The text of "Allow AI translation of my chat" a patient agreed to; bump when the text changes. */
