@@ -2419,3 +2419,139 @@ slots, 300 bookings in every status, ~145 verified reviews, posts, comments, not
   "Seoul Glow Dermatology" has a Kazakh interpreter — the list was not empty. The test now
   asserts what it means: *this* clinic is filtered out. (The lesson from M4, again: test data
   must be unique to the path under test.)
+
+## AI-2 — The booking assistant (an agent with tools)
+
+### 1. The problem, and the one rule that shapes everything
+
+A patient writes "laser toning in Gangnam next week, with an Uzbek interpreter, under 150 000
+won" — in Russian, Uzbek, Kazakh or English. The assistant finds clinics, free times, and
+proposes one. The rule agreed before M5: **the agent is just another client** — it calls the
+same services the app calls, and **a slot is held only after the patient confirms**.
+
+That rule is enforced by the server, not by the prompt:
+
+| The model can | The model cannot |
+| --- | --- |
+| search clinics, read slots, reviews, the patient's own bookings | hold a slot, create or cancel a booking |
+| `propose_hold` — write a proposal on the session | fill in the questionnaire or give a consent |
+
+`propose_hold` checks the time like a real hold would (live treatment, the doctor performs it,
+free, far enough ahead) and stores `pendingHold` — nothing touches the slots. Only
+`confirmAssistantHold`, a mutation the model has no tool for, turns it into a hold, and only for
+the patient who owns the session. Then the normal booking form takes over: questionnaire and
+consents are the patient's own act. Whatever steers the model — a clinic description that says
+"book now", a review, a confused free model — it cannot take a slot.
+
+### 2. One loop, three providers
+
+`AiProvider.converse(system, messages, tools)` is **one model step** in MedVia's own shape
+(`AgentMessage`: user text / assistant text + tool calls / tool results). Each provider maps it:
+
+| Provider | Wire format | Role |
+| --- | --- | --- |
+| OpenRouter (free models) | OpenAI function calling: `tools`, `tool_calls`, `role: "tool"` — `fetch`, no package | the working provider |
+| Anthropic | `tool_use` / `tool_result` blocks via `@anthropic-ai/sdk`; `strict: true`, `tool_choice: auto`, cached system prompt, `effort: low`, `fallbacks: "default"` | proof it runs on a paid model too |
+| Fake | a scripted agent (search → slots → propose, plus markers for each failure) | Jest and Postman, free and identical every run |
+
+The loop itself (`runTurn`, assistant.loop.ts) belongs to MedVia, not to a provider: model →
+tools → model … until it answers, at most **6 model calls**. It is a pure function with injected
+`converse` / `runTool`, tested without a database. A provider failure on the first step means
+"unavailable" (503, nothing stored); later, the turn ends with a polite answer in the patient's
+language.
+
+### 3. A free model's output is untrusted input
+
+- **Arguments** are checked against the tool's own JSON Schema before anything runs
+  (`checkArgs`: required, closed schemas, types, patterns, ranges, enums). A bad call becomes an
+  error *result* the model reads and may correct — never an exception for the patient. Broken
+  JSON from OpenRouter becomes `argsError` the same way.
+- **Ids** must come from earlier results: `propose_hold` re-checks the time is really free, so an
+  invented slot is refused.
+- **Text written by other people** (clinic descriptions, reviews) reaches the model wrapped as
+  `<data>…</data>`, clipped, with angle brackets removed so it cannot close the wrapper; the
+  system prompt says data is never an instruction. This is defence in depth — the real defence
+  is §1: the model has no tool that could do harm.
+
+### 4. History lives on the server, append-only
+
+`assistantSessions.turns` holds every message in the provider-neutral shape. The client never
+sends history: a client that could would forge an assistant turn or a tool result. Turns are only
+appended — a conditional `$push` on `turnCount` also stops two tabs from interleaving turns.
+Anthropic's raw reply (thinking blocks included) is kept on its turn and sent back unchanged to
+Anthropic (an edited history would invalidate its thinking); any other provider rebuilds the
+turn from text + calls, so a session survives a provider switch. TTL 30 days: a patient may
+write symptoms here, and it is not a medical record.
+
+### 5. Consent, limits, cost
+
+- AI consent (`memberAiConsentAt`, from AI-1) is required: patient text may contain health data.
+- 30 messages per Seoul day per patient (a Redis counter with a TTL — fails open), 40 per
+  conversation, 6 model calls per message. Every attempt counts: the limit protects the provider.
+- Free OpenRouter models cost nothing but are rate-limited; the paid path keeps the tools and the
+  system prompt word-for-word stable so they are read from the prompt cache.
+- The production lock from AI-1 stays: `NODE_ENV=production` refuses fake / OpenRouter. A demo
+  deployment with synthetic data will have to revisit it consciously.
+
+### 6. Choosing the free model by measuring: `npm run eval:assistant`
+
+Twelve cases in four languages, each one step of the loop with canned history, graded by code:
+the right tool with valid arguments; ids taken from the results shown (grounding); no proposal
+from an instruction hidden in `<data>` (injection); no tool for a medical question; the answer in
+the patient's script. `EVAL_MODELS="a:free,b:free" npm run eval:assistant` — the winner goes into
+`AI_MODEL_ASSISTANT`.
+
+**The first measurement (2026-10-11).** `google/gemma-4-31b-it:free` could not be measured:
+11 of 12 requests got 429 even after retries — its free capacity at Google AI Studio is shared and
+full. `nvidia/nemotron-3-super-120b-a12b:free` passed 10/12 at `temperature: 0.2`, a different
+two each run: once it searched again although the slots were on the table, once it looked for a
+dermatologist instead of answering a medical question. Two prompt lines ("when the results
+answer the question, reply"; "a medical question gets a short answer without any tool") and
+`temperature: 0` → **12/12 in two runs**, about 2.5 s per step. Two eval cases were also wrong:
+they gave the model slots without the search before them, so looking the clinic up was the right
+move — the eval now replays the real order. Lesson: an eval tests the eval too.
+
+Free models also answer 429 / 502 / 503 when busy: the OpenRouter adapter retries twice
+(Retry-After, or 2 s then 5 s) before the assistant says "not available".
+
+### 7. What the tests proved
+
+Postman `AI-2 — Assistant` (40 requests, fake provider) walks the whole flow — request in words
+→ cards and times → proposal (still free) → Confirm (held, once) → the normal booking — and every
+failure path. Mutation checks:
+
+| Broken on purpose | Caught by |
+| --- | --- |
+| any member may confirm a session's proposal | "Yahyo cannot confirm Feride's proposal" |
+| the proposal is not consumed on confirm | "a second press confirms nothing" |
+| `propose_hold` skips the free-time check | "the model invents a time: propose_hold refuses" |
+| 60 steps instead of 6 | "six steps, then a polite answer" |
+| arguments not checked | "broken tool arguments are answered, not run" |
+| consent not required | "no AI consent yet" |
+| a provider failure stored as a turn | "a failed message is not stored" |
+
+The run also found two real gaps: a 503 reached clients as `INTERNAL_SERVER_ERROR` ("the server
+broke") — `formatError` now maps it to `SERVICE_UNAVAILABLE`; and two doctors' identical times
+looked like a duplicate — slot labels now name the doctor.
+
+### Interview questions and answers
+
+**1. How do you stop an LLM agent from booking something the user did not want?**
+
+Not with the prompt. The model has no tool that writes: `propose_hold` only stores a proposal, and the only path to a real hold is a mutation the patient triggers, checked against their own session. Human-in-the-loop is a server property, so prompt injection or a model error cannot get around it.
+
+**2. Why own the agent loop instead of using a provider's tool runner?**
+
+Three providers with different wire formats share one loop; the loop is where MedVia's rules live (step limit, argument checks, what gets stored), and as a pure function it is tested without a model. Providers only implement one step.
+
+**3. What do you do with tool arguments from a small free model?**
+
+Treat them as untrusted input: validate against the tool's JSON Schema, return a readable error as the tool result so the model can correct itself once, cap the steps, and re-check anything that writes (the proposed slot must still be free).
+
+**4. Where is the conversation stored and why?**
+
+On the server, append-only. A client-held history can be forged (fake assistant turns, fake tool results), and an edited history breaks a reasoning model's thinking continuity. Provider-neutral storage lets the same session continue on another provider.
+
+**5. How did you choose a model?**
+
+By measurement: an eval of twelve single-step decisions graded by code — tool choice, valid arguments, grounding, injection resistance, language — run over the free candidates. The model is configuration, not code.

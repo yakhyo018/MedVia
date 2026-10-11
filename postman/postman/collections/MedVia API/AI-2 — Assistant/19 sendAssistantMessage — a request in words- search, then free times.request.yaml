@@ -1,0 +1,31 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation A($input: AssistantMessageInput!) { sendAssistantMessage(input: $input) { sessionId text toolsUsed clinics { clinicId clinicName district rating minPriceKrw } slots { treatmentId doctorId slotStart label } pendingHold { treatmentId doctorId slotStart label clinicName treatmentName priceKrw expiresAt } } }
+    variables: |-
+      { "input": { "text": "I need \"{{token}}\" in Gangnam next week" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      const r = gql.sendAssistantMessage || {};
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('search_clinics → find_slots', () => pm.expect(r.toolsUsed).to.eql(['search_clinics', 'find_slots']));
+      pm.test('the clinic card', () => pm.expect([(r.clinics || [])[0] && r.clinics[0].clinicId, (r.clinics || [])[0] && r.clinics[0].district]).to.eql([pm.environment.get('clinicId'), 'GANGNAM']));
+      pm.test('free times with the doctor', () => pm.expect(((r.slots || [])[0] || {}).label).to.include('Dr. Han Seo-yeon'));
+      pm.test('only this treatment', () => pm.expect((r.slots || []).every((s) => s.treatmentId === pm.environment.get('treatmentId'))).to.be.true);
+      pm.test('an answer, nothing proposed yet', () => pm.expect([r.text.startsWith('[fake] Free times'), r.pendingHold]).to.eql([true, null]));
+      pm.environment.set('sessionId', r.sessionId || '');
+    language: text/javascript
+order: 19000

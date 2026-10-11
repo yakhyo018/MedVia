@@ -24,9 +24,11 @@ import { T } from './libs/types/common';
 			formatError: (error: T) => {
 				const res = error?.extensions?.originalError || error?.extensions?.response;
 				const rawMsg = res?.message || error?.message;
-				// @nestjs/apollo maps only 400, 401, 403 and 422 to codes; a NotFoundException
-				// would otherwise reach the client as INTERNAL_SERVER_ERROR.
-				const code = res?.statusCode === 404 ? 'NOT_FOUND' : error?.extensions?.code;
+				// @nestjs/apollo maps only 400, 401, 403 and 422 to codes; a NotFoundException or
+				// a ServiceUnavailableException (the AI assistant's provider is down) would
+				// otherwise reach the client as INTERNAL_SERVER_ERROR — "the server broke".
+				const mapped: Record<number, string> = { 404: 'NOT_FOUND', 503: 'SERVICE_UNAVAILABLE' };
+				const code = mapped[res?.statusCode] ?? error?.extensions?.code;
 				const formatted = {
 					extensions: { code },
 					message: Array.isArray(rawMsg) ? rawMsg.join('; ') : rawMsg,

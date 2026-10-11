@@ -24,5 +24,7 @@ import DoctorSchema from '../../schemas/Doctor.model';
 		AuditLogModule,
 	],
 	providers: [ReviewResolver, ReviewService],
+	// The booking assistant (AI-2) reads published reviews through it.
+	exports: [ReviewService],
 })
 export class ReviewModule {}

@@ -19,6 +19,7 @@ import { InquiryModule } from './inquiry/inquiry.module';
 import { NotificationModule } from './notification/notification.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { AccessLogModule } from './access-log/access-log.module';
+import { AssistantModule } from './assistant/assistant.module';
 import { TestSupportModule } from './test-support/test-support.module';
 import { testSupportEnabled } from '../libs/config';
 
@@ -40,6 +41,7 @@ import { testSupportEnabled } from '../libs/config';
 		NotificationModule,
 		RealtimeModule,
 		AccessLogModule,
+		AssistantModule,
 		FollowModule,
 		ViewModule,
 		AuditLogModule,

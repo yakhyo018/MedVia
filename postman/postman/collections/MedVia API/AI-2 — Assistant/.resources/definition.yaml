@@ -1,0 +1,3 @@
+$kind: collection
+description: "The booking assistant with AI_PROVIDER=fake (a scripted agent: free, the same every run). The real loop and the real tools: a request in words → search_clinics → find_slots → an answer with clinic cards and free times; \"book\" → propose_hold, which holds nothing; only the patient's confirmAssistantHold holds the slot (once), and the normal booking form takes it from there. Failure paths: no token, a clinic account, no AI consent, empty text, another patient's session or confirm, a time the model invented, broken tool arguments, a model that never stops calling tools (6 steps), a provider failure (not stored), a closed session, the daily limit (30). Needs ADMIN_EMAIL / ADMIN_PASSWORD, MEDICAL_ENC_KEY and AI_PROVIDER=fake."
+order: 15000

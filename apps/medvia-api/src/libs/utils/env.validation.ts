@@ -49,6 +49,7 @@ export const envValidationSchema = Joi.object({
 	// Model ids; anthropic defaults to claude-haiku-4-5 (chat) and claude-opus-5-5 (summary).
 	AI_MODEL_TRANSLATE: Joi.string().allow('').optional(),
 	AI_MODEL_SUMMARY: Joi.string().allow('').optional(),
+	AI_MODEL_ASSISTANT: Joi.string().allow('').optional(),
 
 	// Added in later milestones; optional for now.
 	GOOGLE_CLIENT_ID: Joi.string().allow('').optional(),

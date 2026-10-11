@@ -3,7 +3,14 @@ import { Language } from '../../libs/enums/common.enum';
 import { CacheService } from '../../redis/cache.service';
 import { TRANSLATION_TTL_SECONDS, translationCacheKey } from './ai.rules';
 import { AI_PROVIDER } from './ai.types';
-import type { AiProvider, QuestionAnswer, TranslationResult } from './ai.types';
+import type {
+	AgentMessage,
+	AgentStep,
+	AgentToolSpec,
+	AiProvider,
+	QuestionAnswer,
+	TranslationResult,
+} from './ai.types';
 
 /**
  * The only door to AI. Callers get a result or null — never an exception: the chat and the
@@ -45,6 +52,23 @@ export class AiService {
 			return await this.provider.summarize(answers);
 		} catch (err: any) {
 			this.logger.warn(`${this.provider.name} summarize failed: ${err.message}`);
+			return null;
+		}
+	}
+
+	/**
+	 * One assistant step, or null when the provider failed (down, rate-limited, refused, bad
+	 * reply). The assistant answers "not available right now"; nothing else is affected.
+	 */
+	public async converse(
+		system: string,
+		messages: AgentMessage[],
+		tools: AgentToolSpec[],
+	): Promise<AgentStep | null> {
+		try {
+			return await this.provider.converse(system, messages, tools);
+		} catch (err: any) {
+			this.logger.warn(`${this.provider.name} converse failed: ${err.message}`);
 			return null;
 		}
 	}

@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query S($input: AvailableSlotsInquiry!) { getAvailableSlots(input: $input) }
+    variables: |-
+      { "input": { "treatmentId": "{{treatmentId}}", "doctorId": "{{doctorAId}}", "date": "{{slotDate}}" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('still free', () => pm.expect((gql.getAvailableSlots || []).map((d) => new Date(d).getTime())).to.include(new Date(pm.environment.get('proposedStart')).getTime()));
+    language: text/javascript
+order: 23000
