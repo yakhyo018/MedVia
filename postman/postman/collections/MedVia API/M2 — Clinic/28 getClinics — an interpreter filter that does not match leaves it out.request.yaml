@@ -31,6 +31,7 @@ scripts:
       const code = (err.extensions && err.extensions.code) || '';
       pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
       const page = gql.getClinics || {};
-      pm.test('empty list', () => pm.expect(page.list).to.eql([]));
+      // Not "empty": other clinics (the demo seed) may share a word of the name and have a Kazakh interpreter.
+      pm.test('this clinic is filtered out', () => pm.expect((page.list || []).map((c) => c._id)).to.not.include(pm.environment.get('clinicId')));
     language: text/javascript
 order: 28000

@@ -2392,3 +2392,30 @@ A log is a snapshot of what happened. If a clinic renames itself, past readings 
 **5. Your search first collected matching member ids with a limit. What was wrong?**
 
 The limit silently dropped matches: a common name had more members than the cap, and their bookings vanished from the results. Narrowing with a capped intermediate list is a correctness bug. The fix matches inside the scoped pipeline after a `$lookup`; at scale, a text index on a denormalised name.
+
+### 8. The demo seed (`npm run seed:demo`)
+
+A database that looks alive for the frontend and for interviews: 20 Seoul clinics in seven
+districts, 40 doctors, 80 treatments, 100 patients (Russian, Uzbek, Kazakh), two weeks of open
+slots, 300 bookings in every status, ~145 verified reviews, posts, comments, notices and FAQ.
+
+- **Faker for what can be random, hand-written for what must be believable.** Names come from
+  faker's Russian and Uzbek locales (Kazakh is hand-written — faker has none); clinic names,
+  the treatment menu, review and post texts are written by hand in `seed/seed-data.ts`.
+  `faker.seed(2026)`: the same database every time.
+- **Built through the schemas, written in bulk.** Each document is `new Model(data)` +
+  `validateSync()` (defaults, casting, validation), then one `collection.insertMany` with the
+  dates we choose — a review from last month says last month. The API would take minutes and
+  could not backdate anything.
+- **The rules still hold:** answers are encrypted with the real key, a CONFIRMED booking's
+  slots are BOOKED and a PENDING one's HELD until its deadline, no doctor has two slots at one
+  time. The derived numbers are not computed by the seed at all: it calls the batch's own
+  `RecountService` and `RankService` — one definition of "followers" and "Recommended".
+- **Locks:** never with `NODE_ENV=production`; every account is `<name>@seed.medvia.test` with
+  `SEED_PASSWORD` from `.env`; it refuses to run twice; `--reset` removes only what belongs to
+  those accounts (the app itself never hard-deletes — this is the seed cleaning up after itself).
+- **What it taught the suite:** an M2 test asserted "the list is empty" for a filter that should
+  not match its clinic. Atlas Search matches any word of the name, and the seed's
+  "Seoul Glow Dermatology" has a Kazakh interpreter — the list was not empty. The test now
+  asserts what it means: *this* clinic is filtered out. (The lesson from M4, again: test data
+  must be unique to the path under test.)

@@ -21,6 +21,7 @@
 		"test:api": "node postman/run.js",
 		"test:socket": "node postman/socket.js",
 		"seed:admin": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/seed-admin.ts",
+		"seed:demo": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/seed-demo.ts",
 		"eval:translate": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/eval-translate.ts"
 	},
 	"dependencies": {
@@ -55,6 +56,7 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.18.0",
+		"@faker-js/faker": "^10.6.0",
 		"@nestjs/cli": "^10.4.9",
 		"@nestjs/schematics": "^10.2.3",
 		"@nestjs/testing": "^10.4.15",

@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-11 — M9 closed (merged `f0806ba`). Next: M10 — Admin + audit log + faker seed._
+_Last updated: 2026-10-11 — M10 built and green on `feature/admin`; waiting for the user's Postman run._
 
 ## The project
 
@@ -34,15 +34,37 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | AI-1 | Translator — chat translation + questionnaire KO summary | ✅ done, merged (`f6df81d`) — Anthropic adapter unverified |
 | M8 | Community + CS + Notification — split into M8a / M8b / M8c | ✅ done — M8a merged (`4f598e4`), M8b + M8c merged (`8214884`) |
 | M9 | Batch — BullMQ delayed jobs + nightly recount / rank | ✅ done, merged (`f0806ba`) |
-| **M10** | **Admin + audit log + faker seed** | **next** |
+| **M10** | **Admin + audit log + faker seed** | **built — waiting for the Postman run** |
 | AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
 
-## Next step: M10 — Admin + audit log + faker seed (collection review first)
+## Next step: the user runs M10 in Postman, then merge
 
-M9 is closed. M10 starts with the collection review gate. Inputs already waiting for it:
-`auditLogs` (written since M2, read by `getAuditLogsByAdmin`), `batchLogs` (M9 — an admin screen
-for the last runs), the admin's member / clinic / review queues, and a faker seed for a demo
-database (sample personas: Yahyo Choriyev, Feride Karimova).
+M10 is built on `feature/admin`: commit 1 `feat` (admin, `9d29edc`) and commit 2 `chore`
+(the demo seed) are on the branch, not merged.
+
+### Built
+- **Access log** (`components/access-log`, `accessLogs`): one line per decrypt of the answers or
+  the AI summary for the clinic or the doctor; never the patient's own, never the admin;
+  `getMyAccessLogs` (patient) and `getAccessLogsByAdmin` (by patient or booking); TTL 1 year.
+- **Audit:** MEMBER block / unblock / delete / restore, NOTICE publish / unpublish / remove —
+  once per real change; `getAuditFeedByAdmin` (group, action, admin, date).
+- `getMemberDetailByAdmin` (member), `getBookings` + `memberId` / `search` (after the scope),
+  `getBookingStatsByAdmin` (booking), `getBatchStatusByAdmin` (audit-log). No admin module;
+  the dashboard is one GraphQL request.
+- **Seed** `npm run seed:demo [-- --reset]`: 20 clinics, 40 doctors, 80 treatments, 100 patients,
+  ~7 900 slots, 300 bookings, ~145 reviews, posts, notices; ends with the batch's RECOUNT + RANK.
+  Logins: `feride@` / `yahyo@` / `clinic01@` / `doctor01@` / `admin@seed.medvia.test` with
+  `SEED_PASSWORD` (in `.env`; `.env.example` has the placeholder). The dev database is seeded.
+- Postman **`M10 — Admin`** (order 14000, 65 requests, 117 assertions); M2 / 28 now asserts that
+  *its* clinic is filtered out (the seed's clinics share words of its name).
+- Mutation checks: 6 mutants, all killed; the name search's 200-member cap was a real bug the
+  suite found first. Full runs green: Newman M0–M10 (1489 assertions, batch running), socket
+  17/17, Jest 215/215, typecheck, lint, build.
+
+### Left
+1. The user runs `M10 — Admin` (and the full suite) in Postman.
+2. Merge `--no-ff` into `develop`, close M10, push, delete the branch.
+3. Next: AI-2 — the booking assistant agent (collection review first).
 
 ### What M9 left behind
 - Running locally needs both apps: `npm run start:dev` (API :3000) and `npm run start:dev:batch`
