@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-11 — M10 built and green on `feature/admin`; waiting for the user's Postman run._
+_Last updated: 2026-10-11 — M10 closed (merged `dba638f`). Next: AI-2 — the booking assistant agent._
 
 ## The project
 
@@ -11,7 +11,7 @@ MedVia — portfolio project for Korean healthtech job applications. Foreign pat
 find verified Seoul clinics and book treatments in their own language. Not a business: no SMS, no
 outgoing email, no payments, no HIRA. The sample patient persona is **Feride Karimova**.
 
-- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M9 + AI-1
+- Repo: https://github.com/yakhyo018/MedVia — `main` = M0, `develop` = M0 … M10 + AI-1
 - Design and data model: `~/Desktop/MedVia-design` — ER source `er/model.js`, mockup generators `source/`
 - ER model (24 collections): https://claude.ai/artifact/LiWJjgdBPcaLSjdGkefKcA
 - Clickable prototype (61 screens): https://claude.ai/artifact/Js6b1j85jbvBrxCSpNRiWt
@@ -34,15 +34,17 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | AI-1 | Translator — chat translation + questionnaire KO summary | ✅ done, merged (`f6df81d`) — Anthropic adapter unverified |
 | M8 | Community + CS + Notification — split into M8a / M8b / M8c | ✅ done — M8a merged (`4f598e4`), M8b + M8c merged (`8214884`) |
 | M9 | Batch — BullMQ delayed jobs + nightly recount / rank | ✅ done, merged (`f0806ba`) |
-| **M10** | **Admin + audit log + faker seed** | **built — waiting for the Postman run** |
-| AI-2 | Booking assistant agent — tool use over own services, hold only after patient confirms | |
+| M10 | Admin + audit log + access log + faker seed | ✅ done, merged (`dba638f`) |
+| **AI-2** | **Booking assistant agent — tool use over own services, hold only after patient confirms** | **next** |
 
-## Next step: the user runs M10 in Postman, then merge
+## Next step: AI-2 — the booking assistant agent (collection review first)
 
-M10 is built on `feature/admin`: commit 1 `feat` (admin, `9d29edc`) and commit 2 `chore`
-(the demo seed) are on the branch, not merged.
+M10 is closed. AI-2 is the last milestone before the production release: an agent that answers
+a patient in their language and books through MedVia's own services (tool use), holding a slot
+only after the patient confirms. It starts with the review gate: tools, data it may read, what it
+stores (conversation? audit?), consent, cost limits.
 
-### Built
+### What M10 built
 - **Access log** (`components/access-log`, `accessLogs`): one line per decrypt of the answers or
   the AI summary for the clinic or the doctor; never the patient's own, never the admin;
   `getMyAccessLogs` (patient) and `getAccessLogsByAdmin` (by patient or booking); TTL 1 year.
@@ -61,10 +63,10 @@ M10 is built on `feature/admin`: commit 1 `feat` (admin, `9d29edc`) and commit 2
   suite found first. Full runs green: Newman M0–M10 (1489 assertions, batch running), socket
   17/17, Jest 215/215, typecheck, lint, build.
 
-### Left
-1. The user runs `M10 — Admin` (and the full suite) in Postman.
-2. Merge `--no-ff` into `develop`, close M10, push, delete the branch.
-3. Next: AI-2 — the booking assistant agent (collection review first).
+### What M10 left behind
+- Demo logins: `feride@` / `yahyo@` / `clinic01@` / `doctor01@` / `admin@seed.medvia.test` with
+  `SEED_PASSWORD` from `.env`; rebuild with `npm run seed:demo -- --reset`.
+- Proposed, not done: add `SEED_PASSWORD=` to the secret-scan regex in CLAUDE.md.
 
 ### What M9 left behind
 - Running locally needs both apps: `npm run start:dev` (API :3000) and `npm run start:dev:batch`
