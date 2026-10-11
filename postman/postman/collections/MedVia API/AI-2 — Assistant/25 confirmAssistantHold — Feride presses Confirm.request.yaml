@@ -1,0 +1,27 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation C($id: String!) { confirmAssistantHold(sessionId: $id) { slotIds slotStart holdExpiresAt } }
+    variables: |-
+      { "id": "{{sessionId}}" }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const hold = gql.confirmAssistantHold || {};
+      pm.test('the proposed time is held', () => pm.expect(new Date(hold.slotStart).getTime()).to.eql(new Date(pm.environment.get('proposedStart')).getTime()));
+      pm.test('for 10 minutes, like any hold', () => pm.expect(new Date(hold.holdExpiresAt) - Date.now()).to.be.within(8 * 60000, 10 * 60000 + 5000));
+    language: text/javascript
+order: 25000

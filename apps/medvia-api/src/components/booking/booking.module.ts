@@ -51,6 +51,6 @@ import { AccessLogModule } from '../access-log/access-log.module';
 		BookingJobs,
 		BookingProcessor,
 	],
-	exports: [BookingService, BookingJobs],
+	exports: [BookingService, BookingJobs, SlotService],
 })
 export class BookingModule {}

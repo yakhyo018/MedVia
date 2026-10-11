@@ -3,7 +3,7 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-11 — M10 closed (merged `dba638f`). Next: AI-2 — the booking assistant agent._
+_Last updated: 2026-10-11 — AI-2 built and green on `feature/assistant`; waiting for the user's Postman run._
 
 ## The project
 
@@ -35,14 +35,32 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 | M8 | Community + CS + Notification — split into M8a / M8b / M8c | ✅ done — M8a merged (`4f598e4`), M8b + M8c merged (`8214884`) |
 | M9 | Batch — BullMQ delayed jobs + nightly recount / rank | ✅ done, merged (`f0806ba`) |
 | M10 | Admin + audit log + access log + faker seed | ✅ done, merged (`dba638f`) |
-| **AI-2** | **Booking assistant agent — tool use over own services, hold only after patient confirms** | **next** |
+| **AI-2** | **Booking assistant agent — tool use over own services, hold only after patient confirms** | **built — waiting for the Postman run** |
 
-## Next step: AI-2 — the booking assistant agent (collection review first)
+## Next step: the user runs AI-2 in Postman, then merge
 
-M10 is closed. AI-2 is the last milestone before the production release: an agent that answers
-a patient in their language and books through MedVia's own services (tool use), holding a slot
-only after the patient confirms. It starts with the review gate: tools, data it may read, what it
-stores (conversation? audit?), consent, cost limits.
+AI-2 is built on `feature/assistant` (not committed yet).
+
+### Built
+- `components/assistant`: `sendAssistantMessage`, `confirmAssistantHold`, `getMyAssistantSession`,
+  `closeAssistantSession` (patients only, AI consent required). Five tools over the existing
+  services; `propose_hold` stores a proposal, only `confirmAssistantHold` holds.
+- `AiProvider.converse` on all three providers: OpenRouter (function calling, `fetch`), Anthropic
+  (`tool_use`, strict, cached system, `fallbacks: "default"`), Fake (scripted agent with markers
+  `#bad-args`, `#loop`, `#forged-slot`, `#ai-fail`). The loop `runTurn` is a pure function.
+- `assistantSessions` (append-only turns, `pendingHold` 15 min, TTL 30 days); limits: 6 model
+  calls per message, 40 messages per session, 30 per Seoul day.
+- `npm run eval:assistant` (12 cases, needs `OPENROUTER_API_KEY`); `AI_MODEL_ASSISTANT` in `.env`.
+- Postman **`AI-2 — Assistant`** (order 15000, 40 requests, 76 assertions); 7 mutants, all killed.
+  `formatError` maps 503 → `SERVICE_UNAVAILABLE`. Full runs green: Newman (938 requests,
+  1567 assertions, batch running), socket 17/17, Jest 236/236, typecheck, lint, build.
+
+### Left
+1. The user runs `AI-2 — Assistant` in Postman (API with `AI_PROVIDER=fake`).
+2. ~~Pick the model~~ — done: `AI_MODEL_ASSISTANT=nvidia/nemotron-3-super-120b-a12b:free` (12/12 twice);
+   `OPENROUTER_API_KEY` is in `.env`. `AI_PROVIDER` stays `fake` for the Postman suite.
+3. Commit, merge `--no-ff` into `develop`, close AI-2, push, delete the branch.
+4. Then: the production release (frontend, deploy, `main`), incl. the AI-1 production lock.
 
 ### What M10 built
 - **Access log** (`components/access-log`, `accessLogs`): one line per decrypt of the answers or

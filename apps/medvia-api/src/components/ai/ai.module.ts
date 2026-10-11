@@ -17,6 +17,7 @@ export function createProvider(env: NodeJS.ProcessEnv = process.env): AiProvider
 				apiKey: env.ANTHROPIC_API_KEY,
 				translateModel: env.AI_MODEL_TRANSLATE || 'claude-haiku-4-5',
 				summaryModel: env.AI_MODEL_SUMMARY || 'claude-opus-5-5',
+				assistantModel: env.AI_MODEL_ASSISTANT || 'claude-opus-5-5',
 			});
 		case 'openrouter': {
 			const model = env.AI_MODEL_TRANSLATE;
@@ -25,6 +26,8 @@ export function createProvider(env: NodeJS.ProcessEnv = process.env): AiProvider
 				apiKey: env.OPENROUTER_API_KEY as string,
 				translateModel: model,
 				summaryModel: env.AI_MODEL_SUMMARY || model,
+				// A model with tool calling; the translation model may not have it.
+				assistantModel: env.AI_MODEL_ASSISTANT || model,
 			});
 		}
 		default:

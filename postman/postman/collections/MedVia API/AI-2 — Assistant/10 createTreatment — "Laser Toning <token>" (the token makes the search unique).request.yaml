@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation T($input: TreatmentCreateInput!) { createTreatment(input: $input) { _id } }
+    variables: |-
+      { "input": { "treatmentName": "Laser Toning {{token}}", "treatmentCategory": "PIGMENTATION", "treatmentDuration": 30, "treatmentPrice": 99000, "doctorIds": ["{{doctorAId}}"] } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.environment.set('treatmentId', (gql.createTreatment || {})._id || '');
+    language: text/javascript
+order: 10000

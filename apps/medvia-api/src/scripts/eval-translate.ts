@@ -48,6 +48,7 @@ function providerFor(model: string): AiProvider {
 			apiKey: process.env.ANTHROPIC_API_KEY,
 			translateModel: model,
 			summaryModel: model,
+			assistantModel: model,
 		});
 	}
 	if (!process.env.OPENROUTER_API_KEY) throw new Error('OPENROUTER_API_KEY is missing in .env');
@@ -55,6 +56,7 @@ function providerFor(model: string): AiProvider {
 		apiKey: process.env.OPENROUTER_API_KEY,
 		translateModel: model,
 		summaryModel: model,
+		assistantModel: model,
 	});
 }
 

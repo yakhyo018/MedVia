@@ -298,3 +298,22 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | Cut: Export CSV, admin → member notification, no-show marking, reply templates. | Personal data in files; spam; M9 cut auto no-show; frontend's job. | — | The mockup as drawn. |
 | Demo seed: `@faker-js/faker` (devDependency, seeded) for names, hand-written Seoul clinics, menu and texts; documents built through the schemas and bulk-inserted with chosen dates; RECOUNT and RANK from the batch at the end. | A believable, repeatable demo in seconds; one definition of the derived numbers. | Bypasses the API's write paths (rules re-applied by hand). | Seeding through GraphQL (slow, no backdating); faker for everything (unbelievable text). |
 | Seed locks: no production, `@seed.medvia.test` accounts, `SEED_PASSWORD` in `.env`, refuses to run twice, `--reset` deletes only the seed's data. | Demo data must never reach production or mix with real accounts. | `--reset` hard-deletes (only seed data). | A separate demo database. |
+
+## AI-2 — Booking assistant
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| The model reads and proposes; only `confirmAssistantHold` (the patient) holds; questionnaire and consents stay in the booking form. | Human-in-the-loop enforced by the server; prompt injection cannot reach a write. | One extra click for the patient. | Let the agent hold or book directly. |
+| Free OpenRouter models are the working provider; Anthropic is kept as the paid proof; Fake for tests. | The user's choice: free to run; the paid path shows it works at production quality. | Free models are weaker and rate-limited — hence validation, step cap, daily limit. | Anthropic only; one provider. |
+| `AiProvider.converse` = one step in a provider-neutral shape; the loop (`runTurn`) is MedVia's, a pure function. | Three wire formats, one set of rules; testable without a model. | Each provider maps formats by hand. | SDK tool runners (Anthropic-only). |
+| Five tools: `search_clinics`, `find_slots`, `get_reviews`, `my_bookings`, `propose_hold`; closed JSON Schemas; `strict: true` on Anthropic. | Few, specific tools suit small models; schemas double as validators. | A request outside them is answered without tools. | A `get_clinic` tool; generic query tools. |
+| Every tool call is checked (`checkArgs`) and errors go back to the model as results; 6 model calls per message. | A free model's output is untrusted input; loops must end. | A hard request may hit the cap. | Trust the arguments; no cap. |
+| Text from clinics and reviews wrapped as `<data>`, clipped, brackets removed. | Defence in depth against prompt injection. | — | Pass it raw. |
+| `assistantSessions`: server-side, append-only turns (neutral shape + Anthropic `raw`), `pendingHold` (15 min), `turnCount` as the concurrency guard; TTL 30 days. | No forged history; preserved thinking; survives a provider switch; health text not kept. | Long sessions resend more history (cap 40). | Client-held history; a separate proposals collection. |
+| AI consent required; 30 messages / Seoul day (Redis, fails open); every attempt counts. | Health data; provider rate limits and cost. | A refused message also counts. | Count only successful turns. |
+| OpenRouter requests send no `tool_choice` (the default with tools is already `auto`). | Some free models list `tools` but not `tool_choice`; sending it would rule them out. | — | Send `tool_choice: "auto"` explicitly. |
+| `formatError` maps 503 → `SERVICE_UNAVAILABLE`. | "The assistant is down" is not "the server broke". | — | Leave INTERNAL_SERVER_ERROR. |
+| `AI_MODEL_ASSISTANT=nvidia/nemotron-3-super-120b-a12b:free`, `temperature: 0`. | 12/12 twice on the eval, ~2.5 s a step; Gemma 4 31B was unmeasurable (429). At 0.2 the tool choice varied. | Free models disappear or get busy — the model is one line in `.env`. | Gemma 4 31B; Nemotron 3 Ultra (slower). |
+| OpenRouter requests retry 429 / 502 / 503 twice (Retry-After, else 2 s, 5 s). | Busy free capacity is usually gone in seconds. | A slow answer instead of a fast "unavailable". | Fail at once. |
+| `npm run eval:assistant`: 12 single-step cases graded by code; picks `AI_MODEL_ASSISTANT`. | Choose the free model by measurement. | Needs `OPENROUTER_API_KEY`. | Pick by reputation. |
+| Cut: booking/cancelling by the agent, voice, streaming replies, several conversations' history. | Consent must stay human; scope. | — | — |
