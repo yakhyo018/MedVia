@@ -112,6 +112,35 @@ const STATUS_PLAN: [BookingStatus, number, 'past' | 'future'][] = [
 ];
 
 const pick = <V>(list: readonly V[]): V => faker.helpers.arrayElement(list);
+
+const SPECIALIST: Record<string, string> = {
+	DERMATOLOGY: 'Dermatologist',
+	PLASTIC_SURGERY: 'Plastic surgeon',
+	DENTAL: 'Dentist',
+	CHECK_UP: 'Internal medicine specialist',
+};
+
+/** Now at this clinic, before that a residency and medical school — years follow the experience. */
+function careerOf(specialty: string, clinicName: string, experience: number): T[] {
+	const year = new Date().getFullYear();
+	const startedAt = year - experience;
+	const joined = year - faker.number.int({ min: 1, max: Math.max(1, Math.min(experience, 8)) });
+	return [
+		{ title: SPECIALIST[specialty], place: clinicName, from: String(joined) },
+		{
+			title: 'Residency',
+			place: 'University hospital, Seoul',
+			from: String(startedAt - 4),
+			to: String(startedAt),
+		},
+		{
+			title: 'M.D.',
+			place: 'Medical school, Seoul',
+			from: String(startedAt - 10),
+			to: String(startedAt - 4),
+		},
+	];
+}
 const chance = (p: number) => faker.number.float() < p;
 const id = () => new Types.ObjectId();
 
@@ -293,6 +322,7 @@ async function seed(m: Models, password: string): Promise<void> {
 	/* doctors: three at the first ten clinics, two at the rest */
 	const doctors: T[] = doctorAccounts.map((acc, i) => {
 		const clinic = clinics[DOCTOR_CLINIC[i]];
+		const experience = faker.number.int({ min: 4, max: 22 });
 		const [sur, given] = doctorNames[i];
 		return {
 			_id: id(),
@@ -300,7 +330,7 @@ async function seed(m: Models, password: string): Promise<void> {
 			doctorName: `${sur[0]} ${given[0]}`,
 			doctorNameKo: `${sur[1]}${given[1]}`,
 			doctorSpecialty: clinic.clinicSpecialty,
-			doctorExperience: faker.number.int({ min: 4, max: 22 }),
+			doctorExperience: experience,
 			// Korean and English, plus at least one of the clinic's patient languages (RU / UZ / KK):
 			// the doctors list filters by the patient's language, and a KO/EN-only demo finds nobody.
 			doctorLangs: [
@@ -312,6 +342,8 @@ async function seed(m: Models, password: string): Promise<void> {
 				}),
 			],
 			doctorBio: `Board-certified in ${clinic.clinicSpecialty.toLowerCase().replace('_', ' ')}.`,
+			// Generic places on purpose: fictional doctors are never tied to a real university or hospital.
+			doctorCareer: careerOf(clinic.clinicSpecialty, clinic.clinicName, experience),
 			doctorViews: faker.number.int({ min: 30, max: 900 }),
 			clinicId: clinic._id,
 			memberId: acc._id,
