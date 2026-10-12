@@ -83,16 +83,17 @@ const PAST_DAYS = 60;
 const FUTURE_DAYS = 14;
 /** 10:00 … 17:30, every 30 minutes. */
 const SLOT_TIMES = Array.from({ length: 16 }, (_, i) => 600 + i * 30);
-const PHOTO = path.join(
-	__dirname,
-	'..',
-	'..',
-	'..',
-	'..',
-	'postman',
-	'fixtures',
-	'clinic-photo.png',
-);
+/**
+ * Photos from the approved landing sample (MedVia-design/landing-with-photos): a clinic room and a
+ * treatment per specialty. Every clinic gets its own copy of both, so `--reset` can delete them.
+ */
+const PHOTOS = path.join(__dirname, 'seed', 'photos');
+const SPECIALTY_PHOTOS: Record<string, [string, string]> = {
+	DERMATOLOGY: ['c_seoulglow.jpg', 't_laser.jpg'],
+	PLASTIC_SURGERY: ['c_apgujeong.jpg', 't_booster.jpg'],
+	DENTAL: ['c_hanbit.jpg', 't_dental.jpg'],
+	CHECK_UP: ['c_namsan.jpg', 't_checkup.jpg'],
+};
 const UPLOADS = path.join(__dirname, '..', '..', '..', '..', 'uploads', 'clinic');
 
 /** The size of the demo: 15 clinics, 40 doctors (3 at the first ten clinics, 2 at the rest), 50 patients. */
@@ -243,12 +244,15 @@ async function seed(m: Models, password: string): Promise<void> {
 	}
 	await insert(m.Member, [admin, ...clinicAccounts, ...doctorAccounts, ...patients], now);
 
-	/* clinics, with a real photo file each */
+	/* clinics, with two real photos each (the room, then a treatment) */
 	fs.mkdirSync(UPLOADS, { recursive: true });
 	const clinics: T[] = DEMO_CLINICS.map((c, i) => {
 		const [lat, lng] = DISTRICT_CENTRE[c.district];
-		const image = `uploads/clinic/${randomUUID()}.png`;
-		fs.copyFileSync(PHOTO, path.join(UPLOADS, path.basename(image)));
+		const images = SPECIALTY_PHOTOS[c.specialty].map((file) => {
+			const image = `uploads/clinic/${randomUUID()}.jpg`;
+			fs.copyFileSync(path.join(PHOTOS, file), path.join(UPLOADS, path.basename(image)));
+			return image;
+		});
 		const langs = [
 			Language.KO,
 			Language.EN,
@@ -275,7 +279,7 @@ async function seed(m: Models, password: string): Promise<void> {
 			clinicHours: [1, 2, 3, 4, 5, 6].map((day) => ({ day, open: '09:00', close: '19:00' })),
 			clinicLangs: langs,
 			clinicInterpreterLangs: langs.filter((l) => l !== Language.KO && l !== Language.EN),
-			clinicImages: [image],
+			clinicImages: images,
 			clinicDesc: `${c.name} in ${c.district.charAt(0)}${c.district.slice(1).toLowerCase()}-gu. Interpreters for ${langs.slice(2).join(', ')}.`,
 			clinicViews: faker.number.int({ min: 80, max: 2400 }),
 			memberId: clinicAccounts[i]._id,
