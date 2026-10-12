@@ -4,11 +4,16 @@
  *   npm run test:api          every milestone folder
  *   npm run test:api -- M1    only folders whose name starts with "M1"
  *
+ * When the run ends, `npm run clean:test -- --yes` removes the @medvia.test accounts the
+ * requests created (and what they own), so the dev database does not fill up with test
+ * clinics and doctors. KEEP_TEST_DATA=1 keeps them, to look at a failed run in the database.
+ *
  * Postman 12 stores a collection as one YAML file per request. This script reads
  * those same files, builds a collection in memory and hands it to Newman, so the
  * tests have one source: what you edit in Postman is what runs here.
  */
 const fs = require('fs');
+const { spawnSync } = require('child_process');
 const path = require('path');
 const yaml = require('js-yaml');
 const newman = require('newman');
@@ -157,7 +162,21 @@ async function main() {
 
 	newman.run({ collection, environment, reporters: ['cli'] }, (err, summary) => {
 		if (err) throw err;
+		cleanTestData();
 		process.exit(summary.run.failures.length > 0 ? 1 : 0);
+	});
+}
+
+/** The run's own accounts go after the run, whether it passed or not; the exit code is the run's. */
+function cleanTestData() {
+	if (process.env.KEEP_TEST_DATA === '1') {
+		console.log('\nKEEP_TEST_DATA=1 — the test data stays (npm run clean:test removes it later).');
+		return;
+	}
+	console.log('\nRemoving the test data of this run…');
+	spawnSync('npm', ['run', '-s', 'clean:test', '--', '--yes'], {
+		cwd: path.join(__dirname, '..'),
+		stdio: 'inherit',
 	});
 }
 
