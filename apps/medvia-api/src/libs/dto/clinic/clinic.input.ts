@@ -119,6 +119,12 @@ export class LocationInput {
 @InputType()
 class CISearch {
 	/** Clinic name in English or Korean, or words from the description. */
+	/** Exactly this treatment name, e.g. "Laser Toning" from the trending list (text is fuzzy). */
+	@IsOptional()
+	@Length(1, 100)
+	@Field(() => String, { nullable: true })
+	treatment?: string;
+
 	@IsOptional()
 	@Length(1, 100)
 	@Field(() => String, { nullable: true })
