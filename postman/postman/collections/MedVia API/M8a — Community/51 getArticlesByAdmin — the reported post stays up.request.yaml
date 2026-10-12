@@ -3,16 +3,14 @@ url: '{{baseUrl}}/graphql'
 method: POST
 headers:
   Content-Type: application/json
-  Authorization: Bearer {{clinicToken}}
+  Authorization: Bearer {{adminToken}}
 body:
   type: graphql
   content:
     query: |-
-      mutation UpdateTreatment($input: TreatmentUpdate!) {
-        updateTreatment(input: $input) { _id treatmentStatus treatmentName treatmentPrice treatmentDuration treatmentDesc treatmentReviewNote doctorIds doctors { _id } treatmentDraft { treatmentPrice treatmentDesc treatmentName submittedAt } }
-      }
+      query A($input: AdminArticlesInquiry!) { getArticlesByAdmin(input: $input) { list { _id articleReports articleStatus } metaCounter { total } } }
     variables: |-
-      { "input": { "treatmentId": "{{treatment2Id}}", "treatmentDesc": "Guaranteed results in one session!" } }
+      { "input": { "page": 1, "limit": 100, "articleCategory": "FREE" } }
 scripts:
   - type: afterResponse
     code: |-
@@ -22,5 +20,7 @@ scripts:
       const msg = err.message || '';
       const code = (err.extensions && err.extensions.code) || '';
       pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const a = ((gql.getArticlesByAdmin || {}).list || []).find((x) => x._id === pm.environment.get('freeId')) || {};
+      pm.test('ACTIVE, the one pending report counted', () => pm.expect([a.articleStatus, a.articleReports]).to.eql(['ACTIVE', 1]));
     language: text/javascript
-order: 44000
+order: 51000

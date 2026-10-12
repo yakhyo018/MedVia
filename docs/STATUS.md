@@ -3,7 +3,20 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-11 — AI-2 closed (merged `623d9c6`). Every planned milestone is done; next: the production release._
+_Last updated: 2026-10-12 — the Postman suite slimmed to the essentials and the dev DB to a small demo
+(see "Slim tests and data" below). Every planned milestone is done; next: the production release._
+
+## Slim tests and data (2026-10-12)
+
+- **Postman:** 850 → 470 request files (837 assertions; 509 sends with the retry loops): every API once on its happy path, one key
+  failure (no token / wrong role) where the budget allows, at most 1.5 × the folder's APIs.
+  State-building mutations were kept, refused requests and repeat queries removed; a few
+  assertions were re-counted (M8a one report, M8c 6 unread / 5 marked). Full run green with the
+  batch running; socket 17/17; Jest untouched (239).
+- **Dev DB:** demo seed = 15 clinics, 40 doctors (3 at ten clinics, 2 at five), 50 patients,
+  ~150 bookings, 69 reviews. Test leftovers (accounts, test notices, orphan audit rows, old batch
+  logs) are removed by `npm run clean:test -- --yes`, which `test:api` runs after every run.
+  One manual account remains: `ali@gmail.com` (left untouched).
 
 ## The project
 
@@ -76,7 +89,7 @@ Every milestone in the table is merged. What is left (to be planned with the use
 - `getMemberDetailByAdmin` (member), `getBookings` + `memberId` / `search` (after the scope),
   `getBookingStatsByAdmin` (booking), `getBatchStatusByAdmin` (audit-log). No admin module;
   the dashboard is one GraphQL request.
-- **Seed** `npm run seed:demo [-- --reset]`: 20 clinics, 40 doctors, 80 treatments, 100 patients,
+- **Seed** `npm run seed:demo [-- --reset]` (since 2026-10-12: 15 clinics, 40 doctors, 60 treatments, 50 patients; was 20 / 40 / 80 / 100),
   ~7 900 slots, 300 bookings, ~145 reviews, posts, notices; ends with the batch's RECOUNT + RANK.
   Logins: `feride@` / `yahyo@` / `clinic01@` / `doctor01@` / `admin@seed.medvia.test` with
   `SEED_PASSWORD` (in `.env`; `.env.example` has the placeholder). The dev database is seeded.

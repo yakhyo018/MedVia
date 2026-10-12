@@ -20,6 +20,6 @@ scripts:
       const msg = err.message || '';
       const code = (err.extensions && err.extensions.code) || '';
       pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
-      pm.test('7 changed', () => pm.expect(gql.markNotificationsRead).to.eql(7));
+      pm.test('5 changed', () => pm.expect(gql.markNotificationsRead).to.eql(5));
     language: text/javascript
 order: 79000

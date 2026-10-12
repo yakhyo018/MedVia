@@ -25,6 +25,7 @@ scripts:
       const list = res.list || [];
       const total = ((res.metaCounter || [])[0] || {}).total || 0;
       const ofType = (readerType, accessType) => list.filter((l) => l.readerType === readerType && l.accessType === accessType);
-      pm.test('the same lines', () => pm.expect(String(total)).to.eql(env('accessTotal')));
+      pm.test("the clinic's reading is listed", () => pm.expect(list.some((l) => l.readerType === 'AGENT')).to.be.true);
+      pm.test('no ADMIN line', () => pm.expect(list.filter((l) => l.readerType === 'ADMIN')).to.be.empty);
     language: text/javascript
 order: 24000

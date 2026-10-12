@@ -24,7 +24,7 @@ scripts:
       const env = (key) => pm.environment.get(key);
       const one = (type, refKey) => list.find((n) => n.notificationType === type && n.notificationRefId === env(refKey)) || {};
       const params = (n) => { try { return JSON.parse(n.notificationParamsJson || '{}'); } catch (e) { return {}; } };
-      pm.test('8 lines', () => pm.expect(list.length, JSON.stringify(list.map((n) => n.notificationType))).to.eql(8));
+      pm.test('6 lines', () => pm.expect(list.length, JSON.stringify(list.map((n) => n.notificationType))).to.eql(6));
       pm.environment.set('notifAId', (list[0] || {})._id || '');
     language: text/javascript
 order: 72000
