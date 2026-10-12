@@ -293,6 +293,8 @@ export class ClinicService implements OnModuleInit {
 			];
 		}
 		if (search.specialty) match.clinicSpecialty = search.specialty;
+		// clinicTreatmentNames is copied from the live treatments: equality on an array element.
+		if (search.treatment) match.clinicTreatmentNames = search.treatment.trim();
 		if (search.priceMin !== undefined || search.priceMax !== undefined) {
 			match.clinicMinPrice = { $ne: null };
 			if (search.priceMin !== undefined) match.clinicMinPrice.$gte = search.priceMin;
