@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, ObjectId, Types } from 'mongoose';
-import { Treatment, Treatments } from '../../libs/dto/treatment/treatment';
+import { Treatment, Treatments, TrendingTreatment } from '../../libs/dto/treatment/treatment';
 import {
 	AdminTreatmentsInquiry,
 	ClinicTreatmentsInquiry,
@@ -15,7 +15,8 @@ import { Messages } from '../../libs/enums/common.enum';
 import { DoctorStatus } from '../../libs/enums/doctor.enum';
 import { TreatmentStatus } from '../../libs/enums/treatment.enum';
 import { T } from '../../libs/types/common';
-import { shapeIntoMongoObjectId } from '../../libs/config';
+import { CacheKeys, shapeIntoMongoObjectId } from '../../libs/config';
+import { CacheService } from '../../redis/cache.service';
 import { ClinicService } from '../clinic/clinic.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { planLiveEdit } from './treatment.rules';
@@ -31,6 +32,13 @@ const NEVER_LIVE = [TreatmentStatus.PENDING, TreatmentStatus.CHANGES_REQUESTED];
 /** Approved at least once: medical-ad edits wait in the draft. */
 const LIVE = [TreatmentStatus.ACTIVE, TreatmentStatus.HIDDEN];
 
+/** What "patients book" means for the trending list: requests that were not refused or dropped. */
+const TRENDING_COUNTED = [BookingStatus.PENDING, BookingStatus.CONFIRMED, BookingStatus.COMPLETED];
+const TRENDING_DAYS = 30;
+/** Ten minutes: a landing-page ranking, not a live counter — no invalidation needed. */
+const TRENDING_TTL_SECONDS = 600;
+export const TRENDING_MAX = 12;
+
 const AUTO_HIDDEN_NOTE = 'Hidden automatically: no doctor of the clinic performs it any more.';
 
 @Injectable()
@@ -40,6 +48,7 @@ export class TreatmentService {
 		@InjectModel('Doctor') private readonly doctorModel: Model<T>,
 		private readonly clinicService: ClinicService,
 		private readonly auditLogService: AuditLogService,
+		private readonly cacheService: CacheService,
 	) {}
 
 	/* ───────────────────────── clinic account ───────────────────────── */
@@ -269,6 +278,83 @@ export class TreatmentService {
 				this.lookupDoctors(true),
 			])
 			.exec();
+	}
+
+	/**
+	 * "What international patients book most this month": live treatments grouped by name
+	 * across live clinics, ranked by the requests of the last 30 days, then by how many clinics
+	 * offer them — so a quiet month still shows the most widely offered treatments. Cached for
+	 * ten minutes (`treatment:trending:<limit>`).
+	 */
+	public async getTrendingTreatments(limit = 4): Promise<TrendingTreatment[]> {
+		const size = Math.min(Math.max(1, Math.trunc(limit) || 4), TRENDING_MAX);
+		return await this.cacheService.wrap(
+			CacheKeys.trendingTreatments(size),
+			TRENDING_TTL_SECONDS,
+			async () => {
+				const activeClinicIds = await this.clinicService.getActiveClinicIds();
+				const since = new Date(Date.now() - TRENDING_DAYS * 24 * 60 * 60 * 1000);
+				return await this.treatmentModel
+					.aggregate<TrendingTreatment>([
+						{
+							$match: {
+								treatmentStatus: TreatmentStatus.ACTIVE,
+								clinicId: { $in: activeClinicIds },
+							},
+						},
+						{
+							$lookup: {
+								from: 'bookings',
+								localField: '_id',
+								foreignField: 'treatmentId',
+								pipeline: [
+									{
+										$match: {
+											createdAt: { $gte: since },
+											bookingStatus: { $in: TRENDING_COUNTED },
+										},
+									},
+									{ $count: 'total' },
+								],
+								as: 'recent',
+							},
+						},
+						{
+							$lookup: {
+								from: 'clinics',
+								localField: 'clinicId',
+								foreignField: '_id',
+								pipeline: [{ $project: { clinicSpecialty: 1 } }],
+								as: 'clinic',
+							},
+						},
+						{
+							$group: {
+								_id: '$treatmentName',
+								treatmentCategory: { $first: '$treatmentCategory' },
+								specialty: { $first: { $first: '$clinic.clinicSpecialty' } },
+								minPrice: { $min: '$treatmentPrice' },
+								bookings: { $sum: { $ifNull: [{ $first: '$recent.total' }, 0] } },
+								clinicIds: { $addToSet: '$clinicId' },
+							},
+						},
+						{
+							$project: {
+								_id: 0,
+								treatmentName: '$_id',
+								treatmentCategory: 1,
+								specialty: 1,
+								minPrice: 1,
+								bookings: 1,
+								clinics: { $size: '$clinicIds' },
+							},
+						},
+						{ $sort: { bookings: -1, clinics: -1, minPrice: 1, treatmentName: 1 } },
+						{ $limit: size },
+					])
+					.exec();
+			},
+		);
 	}
 
 	/* ───────────────────────── admin ───────────────────────── */

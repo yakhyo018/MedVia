@@ -59,6 +59,7 @@ export const CacheKeys = {
 	doctorDetailPattern: 'doctor:detail:*',
 	doctorList: (hash: string) => `doctor:list:${hash}`,
 	doctorListPattern: 'doctor:list:*',
+	trendingTreatments: (limit: number) => `treatment:trending:${limit}`,
 };
 
 export const availableDoctorSorts = [
