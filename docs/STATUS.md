@@ -41,7 +41,9 @@ outgoing email, no payments, no HIRA. The sample patient persona is **Feride Kar
 
 Every milestone in the table is merged. What is left (to be planned with the user):
 
-- **Frontend** — the biggest piece: the 61-screen prototype exists, the app does not.
+- **Frontend** — started as a separate repo **`~/Desktop/MedVia-next`** (2026-10-12): its
+  `CLAUDE.md` and `docs/STATUS.md` hold the rules and the approved F0 plan (nestar-next structure
+  and style, MedVia-design look).
 - **Deploy** — frontend and API on one site (`medvia.uz` + `api.medvia.uz`): the refresh token
   is a cookie and Safari blocks third-party cookies.
 - **AI in production** — AI-1's lock refuses fake / OpenRouter with `NODE_ENV=production`;
