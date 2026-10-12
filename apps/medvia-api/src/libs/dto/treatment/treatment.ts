@@ -2,6 +2,7 @@ import { Field, Int, ObjectType } from '@nestjs/graphql';
 import type { ObjectId } from 'mongoose';
 import { TreatmentCategory, TreatmentStatus } from '../../enums/treatment.enum';
 import { Language } from '../../enums/common.enum';
+import { Specialty } from '../../enums/clinic.enum';
 import { TotalCounter } from '../member/member';
 import { Clinic } from '../clinic/clinic';
 import { Doctor } from '../doctor/doctor';
@@ -114,4 +115,33 @@ export class Treatments {
 
 	@Field(() => [TotalCounter], { nullable: true })
 	metaCounter!: TotalCounter[];
+}
+
+/**
+ * The landing page's "Trending treatments": one row per treatment name across live clinics,
+ * with the bookings requested in the last 30 days.
+ */
+@ObjectType()
+export class TrendingTreatment {
+	@Field(() => String)
+	treatmentName!: string;
+
+	@Field(() => TreatmentCategory)
+	treatmentCategory!: TreatmentCategory;
+
+	/** The specialty of the clinics that offer it (the card's chip). */
+	@Field(() => Specialty)
+	specialty!: Specialty;
+
+	/** The cheapest live price — "From ₩99,000". */
+	@Field(() => Int)
+	minPrice!: number;
+
+	/** PENDING, CONFIRMED or COMPLETED requests created in the last 30 days. */
+	@Field(() => Int)
+	bookings!: number;
+
+	/** Live clinics that offer it. */
+	@Field(() => Int)
+	clinics!: number;
 }

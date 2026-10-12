@@ -1,8 +1,8 @@
 import { UseGuards } from '@nestjs/common';
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import type { ObjectId } from 'mongoose';
 import { TreatmentService } from './treatment.service';
-import { Treatment, Treatments } from '../../libs/dto/treatment/treatment';
+import { Treatment, Treatments, TrendingTreatment } from '../../libs/dto/treatment/treatment';
 import {
 	AdminTreatmentsInquiry,
 	ClinicTreatmentsInquiry,
@@ -107,6 +107,15 @@ export class TreatmentResolver {
 	}
 
 	/** PUBLIC **/
+
+	/** The landing page's "Trending treatments". Public; limit 1–12 (default 4). */
+	@Query(() => [TrendingTreatment])
+	public async getTrendingTreatments(
+		@Args('limit', { type: () => Int, nullable: true }) limit?: number,
+	): Promise<TrendingTreatment[]> {
+		console.log('Query: getTrendingTreatments');
+		return await this.treatmentService.getTrendingTreatments(limit ?? 4);
+	}
 
 	@Query(() => [Treatment])
 	public async getClinicTreatments(

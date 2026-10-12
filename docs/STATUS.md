@@ -6,6 +6,11 @@ Update it whenever a milestone closes.
 _Last updated: 2026-10-12 — the Postman suite slimmed to the essentials and the dev DB to a small demo
 (see "Slim tests and data" below). Every planned milestone is done; next: the production release._
 
+## getTrendingTreatments (2026-10-13)
+
+- Public `getTrendingTreatments(limit)` for the landing page: one row per treatment name
+  (category, specialty, min price, recent bookings, clinics), cached 10 minutes. Postman M4 / 63.
+
 ## Slim tests and data (2026-10-12)
 
 - **Postman:** 850 → 470 request files (837 assertions; 509 sends with the retry loops): every API once on its happy path, one key
