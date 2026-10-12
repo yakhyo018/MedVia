@@ -317,3 +317,13 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | OpenRouter requests retry 429 / 502 / 503 twice (Retry-After, else 2 s, 5 s). | Busy free capacity is usually gone in seconds. | A slow answer instead of a fast "unavailable". | Fail at once. |
 | `npm run eval:assistant`: 12 single-step cases graded by code; picks `AI_MODEL_ASSISTANT`. | Choose the free model by measurement. | Needs `OPENROUTER_API_KEY`. | Pick by reputation. |
 | Cut: booking/cancelling by the agent, voice, streaming replies, several conversations' history. | Consent must stay human; scope. | — | — |
+
+## Tooling — test data cleanup (2026-10-12)
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| `npm run clean:test` removes every `@medvia.test` account and what it owns or touched; dry run by default, `--yes` to delete; then RECOUNT + RANK and clears `clinic:*` / `doctor:*` caches (SCAN + UNLINK). | Postman runs had filled the dev DB with 342 test clinics; the public lists showed them. | Hard-deletes — test data only, matched by the exact `@medvia.test` domain; refuses production. | A separate test database (cleaner, but a second Atlas DB and env to keep in sync). |
+| `test:api` cleans at the end of every run (`KEEP_TEST_DATA=1` skips it). | Leftovers never pile up again. | A failed run's data is gone unless kept. | Clean before a run; clean by hand. |
+| One removal routine (`scripts/seed/accounts.ts`) for `seed:demo --reset` and `clean:test`. | The cascade (bookings, slots, chats, likes, photos…) is written once. | — | Two copies. |
+| Seed doctors speak KO, EN and 1–2 of their clinic's RU / UZ / KK. | The site is for RU / UZ / KK patients; a KO/EN-only demo makes the language filter empty. | — | Every doctor all languages (unrealistic). |
+

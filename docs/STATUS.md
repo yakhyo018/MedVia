@@ -160,6 +160,16 @@ Every milestone in the table is merged. What is left (to be planned with the use
 
 ## Open items
 
+- **Test data cleanup (2026-10-12):** Postman / socket runs had left 1 123 `@medvia.test` accounts,
+  342 clinics and 246 doctors in the dev DB (the frontend's doctors list showed them). Now
+  `npm run clean:test` (dry run; `-- --yes` removes) cleans them, and `test:api` runs it at the
+  end of every run. Shared removal code: `scripts/seed/accounts.ts` (also `seed:demo --reset`).
+  `test:socket` does not clean after itself yet — the next `test:api` (or `clean:test`) does.
+- **Seed doctors' languages:** KO + EN + 1–2 of their clinic's patient languages (RU / UZ / KK),
+  so the patient-language filter finds doctors; the dev DB was re-seeded with `--reset`.
+- Two accounts outside both domains remain (`@clinic.test`, `@test.com`) — origin unknown, left
+  as they are.
+
 - `GOOGLE_CLIENT_ID` not set — Google sign-in is built but only its failure path is tested.
   Real sign-in gets checked with the frontend.
 - `gh` CLI is not logged in, so milestones merge locally (`--no-ff`) instead of through PRs.
@@ -193,6 +203,7 @@ npm run seed:admin             # once; needs ADMIN_EMAIL / ADMIN_PASSWORD in .en
 npm run test:api               # all Postman folders (needs the API running)
 npm run test:api -- M1         # one milestone
 npm run test:socket            # the chat socket end to end (needs the API running)
+npm run clean:test [-- --yes]  # count / remove the @medvia.test test data
 npm run eval:translate         # real AI models side by side (needs a key; costs on Anthropic)
 npm test                       # Jest unit tests (no API, no database needed)
 npm run typecheck && npm run lint:check && npm run build

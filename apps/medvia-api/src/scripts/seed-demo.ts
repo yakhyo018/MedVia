@@ -20,29 +20,9 @@ import 'dotenv/config';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import mongoose, { Model, Schema, Types } from 'mongoose';
+import mongoose, { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import { faker, fakerRU, fakerUZ_UZ_latin } from '@faker-js/faker';
-import MemberSchema from '../schemas/Member.model';
-import ClinicSchema from '../schemas/Clinic.model';
-import DoctorSchema from '../schemas/Doctor.model';
-import TreatmentSchema from '../schemas/Treatment.model';
-import SlotSchema from '../schemas/Slot.model';
-import BookingSchema from '../schemas/Booking.model';
-import ReviewSchema from '../schemas/Review.model';
-import BoardArticleSchema from '../schemas/BoardArticle.model';
-import CommentSchema from '../schemas/Comment.model';
-import NoticeSchema from '../schemas/Notice.model';
-import FollowSchema from '../schemas/Follow.model';
-import LikeSchema from '../schemas/Like.model';
-import ViewSchema from '../schemas/View.model';
-import ReportSchema from '../schemas/Report.model';
-import NotificationSchema from '../schemas/Notification.model';
-import ChatRoomSchema from '../schemas/ChatRoom.model';
-import ChatMessageSchema from '../schemas/ChatMessage.model';
-import AccessLogSchema from '../schemas/AccessLog.model';
-import InquirySchema from '../schemas/Inquiry.model';
-import SessionSchema from '../schemas/Session.model';
 import { MemberAuthType, MemberType } from '../libs/enums/member.enum';
 import { Language } from '../libs/enums/common.enum';
 import { ClinicStatus } from '../libs/enums/clinic.enum';
@@ -60,7 +40,7 @@ import { NoticeCategory, NoticeStatus } from '../libs/enums/notice.enum';
 import { LikeGroup } from '../libs/enums/like.enum';
 import { T } from '../libs/types/common';
 import { encrypt, parseKey } from '../libs/utils/crypto.util';
-import { AI_CONSENT_VERSION, escapeRegex } from '../libs/config';
+import { AI_CONSENT_VERSION } from '../libs/config';
 import {
 	makeBookingCode,
 	respondDeadline,
@@ -69,6 +49,7 @@ import {
 	slotsNeeded,
 	snapshotConsents,
 } from '../components/booking/booking.rules';
+import { Models, models, planAccountRemoval } from './seed/accounts';
 import { BatchCacheService } from '../../../medvia-batch/src/batch-cache.service';
 import { RecountService } from '../../../medvia-batch/src/jobs/recount.service';
 import { RankService } from '../../../medvia-batch/src/jobs/rank.service';
@@ -128,34 +109,6 @@ const pick = <V>(list: readonly V[]): V => faker.helpers.arrayElement(list);
 const chance = (p: number) => faker.number.float() < p;
 const id = () => new Types.ObjectId();
 
-type Models = Record<string, Model<T>>;
-
-function models(): Models {
-	const def = (name: string, schema: Schema) => mongoose.model<T>(name, schema);
-	return {
-		Member: def('Member', MemberSchema),
-		Clinic: def('Clinic', ClinicSchema),
-		Doctor: def('Doctor', DoctorSchema),
-		Treatment: def('Treatment', TreatmentSchema),
-		Slot: def('Slot', SlotSchema),
-		Booking: def('Booking', BookingSchema),
-		Review: def('Review', ReviewSchema),
-		BoardArticle: def('BoardArticle', BoardArticleSchema),
-		Comment: def('Comment', CommentSchema),
-		Notice: def('Notice', NoticeSchema),
-		Follow: def('Follow', FollowSchema),
-		Like: def('Like', LikeSchema),
-		View: def('View', ViewSchema),
-		Report: def('Report', ReportSchema),
-		Notification: def('Notification', NotificationSchema),
-		ChatRoom: def('ChatRoom', ChatRoomSchema),
-		ChatMessage: def('ChatMessage', ChatMessageSchema),
-		AccessLog: def('AccessLog', AccessLogSchema),
-		Inquiry: def('Inquiry', InquirySchema),
-		Session: def('Session', SessionSchema),
-	};
-}
-
 /**
  * Built through the schema — defaults, casting, validation — then written in one bulk insert
  * with the timestamps we chose (a review from last month must say last month).
@@ -178,74 +131,10 @@ async function insert(model: Model<T>, docs: T[], now: Date): Promise<T[]> {
 /* ───────────────────────── reset ───────────────────────── */
 
 async function reset(m: Models): Promise<void> {
-	const members = await m.Member.find(
-		{ memberEmail: { $regex: `${escapeRegex(DOMAIN)}$` } },
-		{ _id: 1 },
-	).lean();
-	const memberIds = members.map((x) => x._id);
-	if (!memberIds.length) return console.log('No demo data to remove.');
-
-	const clinics = await m.Clinic.find(
-		{ memberId: { $in: memberIds } },
-		{ _id: 1, clinicImages: 1 },
-	).lean();
-	const clinicIds = clinics.map((c) => c._id);
-	const doctorIds = (await m.Doctor.find({ clinicId: { $in: clinicIds } }, { _id: 1 }).lean()).map(
-		(d) => d._id,
-	);
-	const articleIds = (
-		await m.BoardArticle.find({ memberId: { $in: memberIds } }, { _id: 1 }).lean()
-	).map((a) => a._id);
-	const bookingIds = (
-		await m.Booking.find(
-			{ $or: [{ clinicId: { $in: clinicIds } }, { memberId: { $in: memberIds } }] },
-			{ _id: 1 },
-		).lean()
-	).map((b) => b._id);
-	const roomIds = (
-		await m.ChatRoom.find(
-			{ $or: [{ clinicId: { $in: clinicIds } }, { memberId: { $in: memberIds } }] },
-			{ _id: 1 },
-		).lean()
-	).map((r) => r._id);
-	const refIds = [...clinicIds, ...doctorIds, ...articleIds];
-
-	// Demo data only — the app itself never hard-deletes; this removes what the seed created.
-	await Promise.all([
-		m.ChatMessage.deleteMany({ roomId: { $in: roomIds } }),
-		m.ChatRoom.deleteMany({ _id: { $in: roomIds } }),
-		m.Review.deleteMany({ bookingId: { $in: bookingIds } }),
-		m.AccessLog.deleteMany({ bookingId: { $in: bookingIds } }),
-		m.Slot.deleteMany({ clinicId: { $in: clinicIds } }),
-		m.Treatment.deleteMany({ clinicId: { $in: clinicIds } }),
-		m.Comment.deleteMany({
-			$or: [{ memberId: { $in: memberIds } }, { articleId: { $in: articleIds } }],
-		}),
-		m.Report.deleteMany({
-			$or: [{ memberId: { $in: memberIds } }, { reportRefId: { $in: articleIds } }],
-		}),
-		m.Follow.deleteMany({
-			$or: [{ followerId: { $in: memberIds } }, { followingId: { $in: memberIds } }],
-		}),
-		m.Like.deleteMany({ $or: [{ memberId: { $in: memberIds } }, { likeRefId: { $in: refIds } }] }),
-		m.View.deleteMany({ $or: [{ memberId: { $in: memberIds } }, { viewRefId: { $in: refIds } }] }),
-		m.Notice.deleteMany({ memberId: { $in: memberIds } }),
-		m.Notification.deleteMany({ receiverId: { $in: memberIds } }),
-		m.Inquiry.deleteMany({ memberId: { $in: memberIds } }),
-		m.Session.deleteMany({ memberId: { $in: memberIds } }),
-	]);
-	await m.Booking.deleteMany({ _id: { $in: bookingIds } });
-	await m.BoardArticle.deleteMany({ _id: { $in: articleIds } });
-	await m.Doctor.deleteMany({ _id: { $in: doctorIds } });
-	await m.Clinic.deleteMany({ _id: { $in: clinicIds } });
-	await m.Member.deleteMany({ _id: { $in: memberIds } });
-
-	for (const clinic of clinics) {
-		for (const image of clinic.clinicImages ?? []) {
-			fs.rmSync(path.join(UPLOADS, '..', '..', image), { force: true });
-		}
-	}
-	console.log(`Removed the demo data of ${memberIds.length} accounts.`);
+	const plan = await planAccountRemoval(m, DOMAIN);
+	if (!plan.counts.Member) return console.log('No demo data to remove.');
+	await plan.run();
+	console.log(`Removed the demo data of ${plan.counts.Member} accounts.`);
 }
 
 /* ───────────────────────── seed ───────────────────────── */
@@ -401,7 +290,16 @@ async function seed(m: Models, password: string): Promise<void> {
 			doctorNameKo: `${sur[1]}${given[1]}`,
 			doctorSpecialty: clinic.clinicSpecialty,
 			doctorExperience: faker.number.int({ min: 4, max: 22 }),
-			doctorLangs: [Language.KO, Language.EN],
+			// Korean and English, plus at least one of the clinic's patient languages (RU / UZ / KK):
+			// the doctors list filters by the patient's language, and a KO/EN-only demo finds nobody.
+			doctorLangs: [
+				Language.KO,
+				Language.EN,
+				...faker.helpers.arrayElements(clinic.clinicInterpreterLangs as Language[], {
+					min: 1,
+					max: 2,
+				}),
+			],
 			doctorBio: `Board-certified in ${clinic.clinicSpecialty.toLowerCase().replace('_', ' ')}.`,
 			doctorViews: faker.number.int({ min: 30, max: 900 }),
 			clinicId: clinic._id,

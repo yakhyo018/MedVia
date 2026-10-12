@@ -110,6 +110,9 @@ Order inside a milestone: review → build → explain + LEARN.md → Postman fo
   text in the assertion message: `pm.expect(body.errors, JSON.stringify(body.errors))`.
 - `npm run test:api` runs every folder from the terminal through Newman; `npm run test:api -- M1`
   runs one milestone. It reads the same YAML files Postman edits — there is no second copy.
+- Test accounts are `<anything>@medvia.test` (never `@seed.medvia.test`, the demo seed's domain).
+  When a run ends, `test:api` calls `npm run clean:test -- --yes`, which removes those accounts and
+  everything they own; `KEEP_TEST_DATA=1` keeps them. `npm run clean:test` alone only counts.
 
 ## Validation
 
@@ -121,6 +124,7 @@ npm run lint:check
 npm test                # Jest unit tests — no API or database needed
 npm run test:api        # needs the API running: npm run start:dev
 npm run test:socket     # the chat socket (Newman cannot reach Socket.IO); API running
+npm run clean:test      # counts the @medvia.test leftovers; -- --yes removes them
 ```
 
 There is no `npm run lint` script on purpose. The Nestar version carried `--fix` and rewrote
