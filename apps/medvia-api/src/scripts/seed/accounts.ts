@@ -22,6 +22,8 @@ import AccessLogSchema from '../../schemas/AccessLog.model';
 import InquirySchema from '../../schemas/Inquiry.model';
 import SessionSchema from '../../schemas/Session.model';
 import AssistantSessionSchema from '../../schemas/AssistantSession.model';
+import AuditLogSchema from '../../schemas/AuditLog.model';
+import BatchLogSchema from '../../schemas/BatchLog.model';
 import { T } from '../../libs/types/common';
 import { escapeRegex } from '../../libs/config';
 
@@ -55,6 +57,8 @@ export function models(): Models {
 		Inquiry: def('Inquiry', InquirySchema),
 		Session: def('Session', SessionSchema),
 		AssistantSession: def('AssistantSession', AssistantSessionSchema),
+		AuditLog: def('AuditLog', AuditLogSchema),
+		BatchLog: def('BatchLog', BatchLogSchema),
 	};
 }
 
@@ -108,6 +112,14 @@ export async function planAccountRemoval(m: Models, domain: string): Promise<Rem
 		).lean()
 	).map((r) => r._id);
 	const refIds = [...clinicIds, ...doctorIds, ...articleIds];
+	const treatmentIds = (
+		await m.Treatment.find({ clinicId: { $in: clinicIds } }, { _id: 1 }).lean()
+	).map((t) => t._id);
+	const reviewIds = (
+		await m.Review.find({ bookingId: { $in: bookingIds } }, { _id: 1 }).lean()
+	).map((r) => r._id);
+	// Admin actions on what goes (approvals, suspensions, cancellations…) go with it.
+	const auditRefIds = [...memberIds, ...refIds, ...treatmentIds, ...bookingIds, ...reviewIds];
 
 	const filters: [string, T][] = [
 		['ChatMessage', { roomId: { $in: roomIds } }],
@@ -126,6 +138,7 @@ export async function planAccountRemoval(m: Models, domain: string): Promise<Rem
 		['Inquiry', { memberId: { $in: memberIds } }],
 		['Session', { memberId: { $in: memberIds } }],
 		['AssistantSession', { memberId: { $in: memberIds } }],
+		['AuditLog', { $or: [{ auditRefId: { $in: auditRefIds } }, { memberId: { $in: memberIds } }] }],
 		// Parents last: a crash halfway leaves orphans of children, never children of the dead.
 		['Booking', { _id: { $in: bookingIds } }],
 		['BoardArticle', { _id: { $in: articleIds } }],

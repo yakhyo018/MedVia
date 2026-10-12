@@ -1,6 +1,6 @@
 /**
- * A demo database that looks alive: 20 Seoul clinics, 40 doctors, 100 patients from Russia,
- * Uzbekistan and Kazakhstan, two weeks of open slots, 300 bookings in every status, verified
+ * A small demo database that looks alive: 15 Seoul clinics, 40 doctors, 50 patients from Russia,
+ * Uzbekistan and Kazakhstan, two weeks of open slots, ~150 bookings in every status, verified
  * reviews, community posts, notices and FAQ.
  *
  *   npm run seed:demo              refuses if the demo data already exists
@@ -95,14 +95,19 @@ const PHOTO = path.join(
 );
 const UPLOADS = path.join(__dirname, '..', '..', '..', '..', 'uploads', 'clinic');
 
+/** The size of the demo: 15 clinics, 40 doctors (3 at the first ten clinics, 2 at the rest), 50 patients. */
+const DEMO_CLINICS = CLINICS.slice(0, 15);
+const DOCTOR_CLINIC = DEMO_CLINICS.flatMap((_, i) => Array<number>(i < 10 ? 3 : 2).fill(i));
+const PATIENTS = 50;
+
 const STATUS_PLAN: [BookingStatus, number, 'past' | 'future'][] = [
-	[BookingStatus.COMPLETED, 150, 'past'],
-	[BookingStatus.NO_SHOW, 10, 'past'],
-	[BookingStatus.CANCELLED, 15, 'past'],
-	[BookingStatus.DECLINED, 10, 'past'],
-	[BookingStatus.EXPIRED, 15, 'past'],
-	[BookingStatus.CONFIRMED, 70, 'future'],
-	[BookingStatus.PENDING, 30, 'future'],
+	[BookingStatus.COMPLETED, 75, 'past'],
+	[BookingStatus.NO_SHOW, 5, 'past'],
+	[BookingStatus.CANCELLED, 8, 'past'],
+	[BookingStatus.DECLINED, 5, 'past'],
+	[BookingStatus.EXPIRED, 8, 'past'],
+	[BookingStatus.CONFIRMED, 35, 'future'],
+	[BookingStatus.PENDING, 15, 'future'],
 ];
 
 const pick = <V>(list: readonly V[]): V => faker.helpers.arrayElement(list);
@@ -166,7 +171,7 @@ async function seed(m: Models, password: string): Promise<void> {
 
 	/* members */
 	const admin = account('admin', MemberType.ADMIN, 'MedVia Team', { memberLang: Language.EN });
-	const clinicAccounts = CLINICS.map((_, i) =>
+	const clinicAccounts = DEMO_CLINICS.map((_, i) =>
 		account(
 			`clinic${String(i + 1).padStart(2, '0')}`,
 			MemberType.AGENT,
@@ -177,7 +182,7 @@ async function seed(m: Models, password: string): Promise<void> {
 			},
 		),
 	);
-	const doctorNames = Array.from({ length: CLINICS.length * 2 }, (_, i) => [
+	const doctorNames = Array.from({ length: DOCTOR_CLINIC.length }, (_, i) => [
 		KOREAN_SURNAMES[i % KOREAN_SURNAMES.length],
 		KOREAN_GIVEN[(i * 7) % KOREAN_GIVEN.length],
 	]);
@@ -200,11 +205,13 @@ async function seed(m: Models, password: string): Promise<void> {
 		patient('feride', 'Feride Karimova', Language.RU, 'Uzbekistan'),
 		patient('yahyo', 'Yahyo Choriyev', Language.UZ, 'Uzbekistan'),
 	];
-	for (let i = 0; i < 98; i++) {
+	// Russian-speaking ~40 %, Uzbek ~35 %, Kazakh ~25 % — the patients MedVia is for.
+	const others = PATIENTS - patients.length;
+	for (let i = 0; i < others; i++) {
 		const female = chance(0.6);
 		const sex = female ? 'female' : 'male';
 		const tag = `patient${String(i + 1).padStart(3, '0')}`;
-		if (i < 38) {
+		if (i < Math.round(others * 0.4)) {
 			patients.push(
 				patient(
 					tag,
@@ -213,7 +220,7 @@ async function seed(m: Models, password: string): Promise<void> {
 					pick(['Russia', 'Russia', 'Kazakhstan']),
 				),
 			);
-		} else if (i < 73) {
+		} else if (i < Math.round(others * 0.75)) {
 			patients.push(
 				patient(
 					tag,
@@ -238,7 +245,7 @@ async function seed(m: Models, password: string): Promise<void> {
 
 	/* clinics, with a real photo file each */
 	fs.mkdirSync(UPLOADS, { recursive: true });
-	const clinics: T[] = CLINICS.map((c, i) => {
+	const clinics: T[] = DEMO_CLINICS.map((c, i) => {
 		const [lat, lng] = DISTRICT_CENTRE[c.district];
 		const image = `uploads/clinic/${randomUUID()}.png`;
 		fs.copyFileSync(PHOTO, path.join(UPLOADS, path.basename(image)));
@@ -279,9 +286,9 @@ async function seed(m: Models, password: string): Promise<void> {
 	});
 	await insert(m.Clinic, clinics, now);
 
-	/* doctors: two per clinic */
+	/* doctors: three at the first ten clinics, two at the rest */
 	const doctors: T[] = doctorAccounts.map((acc, i) => {
-		const clinic = clinics[Math.floor(i / 2)];
+		const clinic = clinics[DOCTOR_CLINIC[i]];
 		const [sur, given] = doctorNames[i];
 		return {
 			_id: id(),
@@ -310,7 +317,7 @@ async function seed(m: Models, password: string): Promise<void> {
 	await insert(m.Doctor, doctors, now);
 
 	/* treatments: four per clinic */
-	const treatments: T[] = clinics.flatMap((clinic, i) =>
+	const treatments: T[] = clinics.flatMap((clinic) =>
 		faker.helpers
 			.arrayElements(MENU[clinic.clinicSpecialty as keyof typeof MENU], 4)
 			.map((item) => ({
@@ -323,9 +330,11 @@ async function seed(m: Models, password: string): Promise<void> {
 					Math.round((item.price * faker.number.float({ min: 0.85, max: 1.2 })) / 1000) * 1000,
 				treatmentDesc: item.desc,
 				treatmentLangs: clinic.clinicLangs,
-				doctorIds: chance(0.7)
-					? [doctors[i * 2]._id, doctors[i * 2 + 1]._id]
-					: [doctors[i * 2 + faker.number.int(1)]._id],
+				// Every doctor of the clinic, or one of them.
+				doctorIds: (() => {
+					const own = doctors.filter((d) => d.clinicId === clinic._id).map((d) => d._id);
+					return chance(0.7) ? own : [pick(own)];
+				})(),
 				clinicId: clinic._id,
 				submittedAt: clinic.verifiedAt,
 				verifiedAt: new Date(clinic.verifiedAt.getTime() + DAY),
@@ -656,7 +665,7 @@ async function seed(m: Models, password: string): Promise<void> {
 
 	/* follows and likes, then their counters */
 	const follows = new Map<string, T>();
-	while (follows.size < 120) {
+	while (follows.size < 60) {
 		const follower = pick(patients);
 		const target = chance(0.6) ? pick(clinicAccounts) : pick(doctorAccounts);
 		follows.set(`${follower._id}|${target._id}`, {
@@ -672,7 +681,7 @@ async function seed(m: Models, password: string): Promise<void> {
 		[LikeGroup.DOCTOR, doctors],
 		[LikeGroup.ARTICLE, articles],
 	];
-	while (likes.size < 250) {
+	while (likes.size < 120) {
 		const [group, list] = pick(likeTargets);
 		const target = pick(list);
 		const member = pick(patients);

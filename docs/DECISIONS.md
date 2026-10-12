@@ -326,4 +326,5 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | `test:api` cleans at the end of every run (`KEEP_TEST_DATA=1` skips it). | Leftovers never pile up again. | A failed run's data is gone unless kept. | Clean before a run; clean by hand. |
 | One removal routine (`scripts/seed/accounts.ts`) for `seed:demo --reset` and `clean:test`. | The cascade (bookings, slots, chats, likes, photos…) is written once. | — | Two copies. |
 | Seed doctors speak KO, EN and 1–2 of their clinic's RU / UZ / KK. | The site is for RU / UZ / KK patients; a KO/EN-only demo makes the language filter empty. | — | Every doctor all languages (unrealistic). |
-
+| Postman slimmed: one happy path per API + one key failure, ≤ 1.5 × APIs per folder (850 → 470 requests). | The user's choice: the suite tests the API surface, not every edge case; runs faster, easier to read. | Fewer regressions caught by Postman (refresh-replay, throttling, report thresholds, lost-job races are gone from it) — Jest still covers the rules. | Keep the full catalogue. |
+| Demo seed 15 clinics / 40 doctors / 50 patients; `clean:test` also removes test notices, orphan audit rows and old batch logs. | A small, readable demo; the admin pages show only demo activity. | — | The earlier 20 / 40 / 100. |

@@ -88,9 +88,10 @@ Every milestone (M1…M10) passes two gates set by the user:
    service code until the user says yes. The ER model (`MedVia-design/er/model.js`) is the starting
    point, not a contract.
 2. **Postman check — before the milestone closes.** Add a folder `Mx — <Name>` for the milestone
-   under `postman/postman/collections/MedVia API/`: every query and mutation, the happy path and
-   the failure paths (no token, wrong role, invalid input), each with test scripts. The user runs
-   it. Only after it passes does `feature/<module>` merge into `develop`.
+   under `postman/postman/collections/MedVia API/`: every query and mutation once on its happy
+   path, plus one key failure (no token or wrong role) where it matters — at most 1.5 × the
+   folder's APIs in requests (10 APIs → 15 requests), setup included. No edge-case catalogues
+   (decided 2026-10-12); Jest unit tests hold the fine-grained rules. The user runs it. Only after it passes does `feature/<module>` merge into `develop`.
 
 Order inside a milestone: review → build → explain + LEARN.md → Postman folder → user runs it → merge.
 

@@ -21,6 +21,6 @@ scripts:
       const code = (err.extensions && err.extensions.code) || '';
       pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
       const mine = ((gql.getReportsByAdmin || {}).list || []).filter((r) => r.reportRefId === pm.environment.get('freeId'));
-      pm.test('5 pending, with the title and the HIDDEN status', () => pm.expect([mine.length, (mine[0] || {}).targetStatus, ((mine[0] || {}).targetText || '').includes(pm.environment.get('token'))]).to.eql([5, 'HIDDEN', true]));
+      pm.test('1 pending, with the title; one report does not hide the post', () => pm.expect([mine.length, (mine[0] || {}).targetStatus, ((mine[0] || {}).targetText || '').includes(pm.environment.get('token'))]).to.eql([1, 'ACTIVE', true]));
     language: text/javascript
 order: 48000
