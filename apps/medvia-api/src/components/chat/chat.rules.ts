@@ -34,6 +34,17 @@ export const otherUnread = (sender: SenderType) =>
 export const viewerLang = (side: SenderType, patientLang: Language): Language =>
 	side === SenderType.CLINIC ? Language.KO : patientLang;
 
+/**
+ * The language a new message is written in. The clinic writes Korean. The patient may pick the
+ * language of the message box (someone from Tashkent may type in Russian one day and Uzbek the
+ * next); without a pick it is their profile language.
+ */
+export const senderLang = (
+	sender: SenderType,
+	patientLang: Language,
+	chosen?: Language,
+): Language => (sender === SenderType.CLINIC ? Language.KO : (chosen ?? patientLang));
+
 /** The language a message must be translated into for the other side to read it. */
 export const targetLang = (sender: SenderType, patientLang: Language): Language =>
 	sender === SenderType.PATIENT ? Language.KO : patientLang;

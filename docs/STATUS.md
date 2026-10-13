@@ -130,7 +130,8 @@ Every milestone in the table is merged. What is left (to be planned with the use
   not committed because it carries absolute paths. Decide: commit with relative paths, or delete.
 - `apps/medvia-batch/image/IMG_6127.HEIC` is the user's stray photo — never commit it.
 - 2FA was discussed and **declined** by the user (not on the roadmap).
-- AI open items: Anthropic adapter unverified; OpenRouter demo model to be picked with eval:translate.
+- AI open items: Anthropic adapter unverified. OpenRouter translate model picked with eval:translate
+  (2026-10-13): `nvidia/nemotron-3-super-120b-a12b:free` (16/16) — see DECISIONS.
 - Last full runs (2026-10-10): Newman M0–M8c green (**1255** assertions, the user's Postman run
   of M8b + M8c green), Jest 188/188, `test:socket` 17/17, typecheck, `lint:check`, `build` clean.
 

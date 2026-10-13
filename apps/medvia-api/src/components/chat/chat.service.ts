@@ -29,6 +29,7 @@ import {
 	translationUpdate,
 	unreadForLine,
 	unreadOf,
+	senderLang,
 	viewerLang,
 } from './chat.rules';
 
@@ -120,7 +121,7 @@ export class ChatService {
 		if (!text) throw new BadRequestException(Messages.BAD_REQUEST);
 
 		const patient = await this.patientOf(room.memberId);
-		const messageLang = viewer.side === SenderType.PATIENT ? patient.memberLang : Language.KO;
+		const messageLang = senderLang(viewer.side, patient.memberLang, input.messageLang);
 		const target = targetLang(viewer.side, patient.memberLang);
 		const message = await this.messageModel.create({
 			messageType: MessageType.TEXT,

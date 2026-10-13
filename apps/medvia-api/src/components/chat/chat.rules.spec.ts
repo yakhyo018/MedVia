@@ -12,6 +12,7 @@ import {
 	otherUnread,
 	planTranslation,
 	roomScope,
+	senderLang,
 	sideOf,
 	targetLang,
 	textFor,
@@ -53,6 +54,19 @@ describe('languages', () => {
 	it("a message is translated into the other side's language", () => {
 		expect(targetLang(SenderType.PATIENT, Language.UZ)).toBe(Language.KO);
 		expect(targetLang(SenderType.CLINIC, Language.UZ)).toBe(Language.UZ);
+	});
+
+	it('the patient writes in the language picked in the message box, else the profile one', () => {
+		expect(senderLang(SenderType.PATIENT, Language.RU)).toBe(Language.RU);
+		expect(senderLang(SenderType.PATIENT, Language.RU, Language.UZ)).toBe(Language.UZ);
+		expect(senderLang(SenderType.CLINIC, Language.RU, Language.UZ)).toBe(Language.KO);
+	});
+
+	it('a patient writing in Korean needs no translation', () => {
+		const lang = senderLang(SenderType.PATIENT, Language.RU, Language.KO);
+		expect(
+			planTranslation(MessageType.TEXT, lang, targetLang(SenderType.PATIENT, Language.RU), true),
+		).toBe(TranslationStatus.SKIPPED);
 	});
 
 	const message = {
