@@ -3,8 +3,10 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-12 — the Postman suite slimmed to the essentials and the dev DB to a small demo
-(see "Slim tests and data" below). Every planned milestone is done; next: the production release._
+_Last updated: 2026-10-13 — every planned backend milestone is done; small additions for the
+frontend's F1 since: `getTrendingTreatments`, `getClinics` `search.treatment`, seed photos and
+doctor careers, `clean:test`, the slimmed Postman suite. Next: whatever the frontend's F1 / F2
+needs; then the production release._
 
 ## getTrendingTreatments (2026-10-13)
 
