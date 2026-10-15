@@ -1,0 +1,103 @@
+# MedVia in production (the portfolio site): https://medvia.tech + https://api.medvia.tech
+# on one server. Both repositories sit side by side:
+#   /opt/medvia/MedVia        this repository, with .env (NODE_ENV=production, DEMO_MODE=true …)
+#   /opt/medvia/MedVia-next   the frontend
+# Run from this folder:  docker compose -f docker-compose.prod.yml up -d --build
+# One-off scripts:       docker compose -f docker-compose.prod.yml run --rm tools npm run seed:demo
+# Full steps: deploy/README.md
+
+name: medvia
+
+x-api: &api
+  build:
+    context: ..
+    target: runtime
+  image: medvia-api
+  env_file: ../.env
+  environment:
+    NODE_ENV: production
+    REDIS_URL: redis://redis:6379
+  depends_on:
+    - redis
+  restart: unless-stopped
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  api:
+    <<: *api
+    command: ['node', 'dist/apps/medvia-api/main']
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      PORT_API: '3000'
+    volumes:
+      - uploads:/app/uploads
+
+  batch:
+    <<: *api
+    command: ['node', 'dist/apps/medvia-batch/main']
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      PORT_BATCH: '3001'
+
+  web:
+    build:
+      context: ../../MedVia-next
+      args:
+        REACT_APP_API_URL: https://api.medvia.tech
+        REACT_APP_API_GRAPHQL_URL: https://api.medvia.tech/graphql
+        REACT_APP_API_WS: https://api.medvia.tech
+    image: medvia-web
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+      - certbot-www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped
+
+  # Renews the certificates twice a day; nginx is reloaded by deploy/renew.sh (cron).
+  certbot:
+    image: certbot/certbot:v2.11.0
+    entrypoint: ['/bin/sh', '-c', 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done']
+    volumes:
+      - certbot-www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+    restart: unless-stopped
+
+  # Not started by `up`: seed:demo, seed:admin, photos:attach (sources + ts-node).
+  tools:
+    build:
+      context: ..
+      target: build
+    image: medvia-tools
+    env_file: ../.env
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      - redis
+    profiles: ['tools']
+
+volumes:
+  redis-data:
+  uploads:
+  certbot-www:
+  letsencrypt:
