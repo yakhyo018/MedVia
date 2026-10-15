@@ -85,11 +85,10 @@ const FUTURE_DAYS = 14;
 /** "09:30" → 570 (minutes after midnight). */
 const minutesOf = (clock: string) => Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3, 5));
 /**
- * Photos. Each clinic and doctor has its own generated files (seed/photos/clinics/<slug>-<n>.webp,
- * seed/photos/doctors/<slug>-<n>.webp — see generate-photos.ts and seed/photos/SOURCES.md); until
- * they exist a clinic falls back to the landing sample's room and treatment photo for its
- * specialty and a doctor shows initials. Every record gets its own copy, so `--reset` can
- * delete them.
+ * Photos: licensed stock files per clinic and doctor (seed/photos/clinics/<slug>-<n>.jpg,
+ * seed/photos/doctors/<slug>-<n>.jpg — sources in seed/photos/SOURCES.md). A clinic without own
+ * files falls back to the landing sample for its specialty, a doctor shows initials. Every record
+ * gets its own copy, so `--reset` can delete them.
  */
 const PHOTOS = path.join(__dirname, 'seed', 'photos');
 const SPECIALTY_PHOTOS: Record<string, [string, string]> = {
@@ -107,7 +106,7 @@ const DEMO_DOCTORS = CLINICS.flatMap((clinic, i) =>
 );
 const PATIENTS = 50;
 
-/** A clinic's own generated photos, in order (<slug>-1.webp, <slug>-2.webp …). */
+/** A clinic's (or a doctor's) own photos, in order (<slug>-1.jpg, <slug>-2.jpg …). */
 const ownPhotos = (folder: string, slug: string): string[] => {
 	const dir = path.join(PHOTOS, folder);
 	if (!fs.existsSync(dir)) return [];
@@ -357,7 +356,7 @@ async function seed(m: Models, password: string): Promise<void> {
 	});
 	await insert(m.Clinic, clinics, now);
 
-	/* doctors: three per clinic, each with a portrait when one was generated */
+	/* doctors: three per clinic, each with their portrait */
 	const doctors: T[] = doctorAccounts.map((acc, i) => {
 		const seedDoctor = DEMO_DOCTORS[i];
 		const clinic = clinics[seedDoctor.clinic];

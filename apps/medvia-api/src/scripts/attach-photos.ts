@@ -2,7 +2,7 @@
  * Brings photos made after the seed into the database without seeding again (ids, bookings and
  * reviews stay): a seed doctor without a `doctorImage` gets their portrait from
  * seed/photos/doctors, and a seed clinic with fewer photos than seed/photos/clinics now holds
- * gets the full, ordered set (its old copies are deleted). Run after `npm run photos:generate`.
+ * gets the full, ordered set (its old copies are deleted). Run after adding files there.
  *
  *   npm run photos:attach
  *

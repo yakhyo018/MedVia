@@ -95,10 +95,10 @@ cd ../MedVia/deploy && docker compose -f docker-compose.prod.yml up -d --build
 docker image prune -f                           # old layers fill the 50 GB disk otherwise
 ```
 
-## 8. Doctor portraits that arrive later
+## 8. New seed photos later
 
-On the laptop: `npm run photos:generate -- --only=doctors` (free GPU quota, a few a day), commit,
-push. On the server, after `git pull`:
+Add the files to `apps/medvia-api/src/scripts/seed/photos/clinics|doctors/` (licensed stock, source
+in `SOURCES.md`), commit, push. On the server, after `git pull`:
 
 ```bash
 docker compose -f docker-compose.prod.yml build tools

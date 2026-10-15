@@ -17,13 +17,12 @@ Now the production release (frontend F9): `feature/seed-variety` (below) is read
   한빛치과 (Seocho), 잠실가족치과, 이태원 글로벌치과 (with its director's name), Myeongdong Skin Lab,
   압구정라인의원 (Ansan). The new eight match no real clinic; Seoul Glow, Namsan and the tests'
   names were clean and kept.
-- **Photos** (`seed/photos/clinics|doctors/<slug>-<n>`, sources in `seed/photos/SOURCES.md`):
-  clinics 3–4 each — five FLUX.1-schnell images (made before the user stopped AI generation) and
-  Unsplash / Pexels interiors without people, signs or logos; **doctors: Pexels-licence stock
-  portraits** of East Asian models (the user's decision), 8 women of 24 (~30 %, as asked — six
-  doctors were renamed to men, `Ko Min-seo` kept). The landing samples were dropped as clinic
-  photos (all show people; one is a museum shop). `photos:attach` updates existing records
-  without a reseed; `photos:generate` (AI) is kept but not used.
+- **Photos** (`seed/photos/clinics|doctors/<slug>-<n>.jpg`, sources in `seed/photos/SOURCES.md`):
+  licensed stock only — clinics 3–4 each (Unsplash / Pexels interiors without people, signs or
+  logos), doctors Pexels portraits of East Asian models, 8 women of 24 (~30 %, as asked — six
+  doctors were renamed to men). No AI-generated images (removed at the user's request). The
+  landing samples were dropped as clinic photos (all show people). `photos:attach` brings later
+  photos into existing records without a reseed.
 - Dev DB reseeded; `clean:test` removed the old test accounts (also the F5 test clinic).
 
 ## getTrendingTreatments (2026-10-13)

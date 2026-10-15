@@ -2566,17 +2566,15 @@ clinics, which the site would show with invented ratings.
   opening hours and three doctors (name, gender, experience, bio, earlier post). Slots are built
   from each clinic's hours, so a 07:00 check-up centre gets 07:00 slots and a closed Sunday none.
 - **Name check:** every name searched in Korean; collisions renamed.
-- **Photos without licence or likeness problems:** FLUX.1-schnell (Apache 2.0) through its free
-  Hugging Face Space — Gradio's REST API: `POST /gradio_api/call/infer` returns an event id, the
-  `GET` stream ends with `event: complete` and the file URL — plus Unsplash-licence interiors
-  without people. Generated faces are nobody's. The free GPU quota is small, so the script skips
-  filled slots and resumes; `photos:attach` brings later photos into existing records.
+- **Licensed stock photos:** clinic interiors without people, signs or logos (Unsplash / Pexels
+  licences) and doctor portraits of models (Pexels licence), every file's source in
+  `seed/photos/SOURCES.md`. `photos:attach` brings later photos into existing records.
 
 ### Interview questions
 
-1. **Why not take doctor photos from the web?** Copyright aside, a real person would be shown as
-   a fictional doctor with ratings — misrepresenting them. Generated faces avoid both.
-2. **How do you make a slow, quota-limited job safe to rerun?** Idempotent slots (skip existing
-   files), stop at the first refusal, record what was made (manifest), resume next run.
+1. **Which images may a public demo use?** Only ones with a known licence that allows it
+   (Unsplash, Pexels), each source recorded — arbitrary search results have unknown owners.
+2. **Why no people in the clinic photos?** A person in a clinic photo reads as its staff or
+   patient; the doctor portraits are separate and the site says the data is fictional.
 3. **Why attach photos instead of reseeding?** Reseeding changes every id; in production that
    would break bookings, reviews and links. Updating the two fields keeps everything else.
