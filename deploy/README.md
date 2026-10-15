@@ -31,7 +31,14 @@ curl -fsSL https://get.docker.com | sh
 
 Three **A** records to the server's IPv4: `@`, `www`, `api`. Check: `dig +short api.medvia.tech`.
 
-## 3. MongoDB Atlas
+## 3. Google sign-in (optional)
+
+Google Cloud Console → APIs & Services → OAuth consent screen (External, app name MedVia) →
+Credentials → Create OAuth client ID → **Web application**, Authorized JavaScript origins:
+`https://medvia.tech` (and `http://localhost:4000` for development). The client id goes to
+`GOOGLE_CLIENT_ID` (server) and `REACT_APP_GOOGLE_CLIENT_ID` (`MedVia-next/.env.local`, development).
+
+## 3b. MongoDB Atlas
 
 - A separate database for the site, e.g. `.../medvia-demo` — never the development one.
 - Network Access: add the server's IP.
@@ -43,6 +50,7 @@ mkdir -p /opt/medvia && cd /opt/medvia
 git clone -b main https://github.com/yakhyo018/MedVia.git
 git clone -b main https://github.com/yakhyo018/MedVia-next.git
 cp MedVia/.env.example MedVia/.env && nano MedVia/.env
+ln -s ../.env MedVia/deploy/.env    # compose reads GOOGLE_CLIENT_ID from it for the web build
 ```
 
 `.env` for production — **new secrets, none from development**:
@@ -60,6 +68,7 @@ cp MedVia/.env.example MedVia/.env && nano MedVia/.env
 | `AI_PROVIDER` | `openrouter` (a separate `medvia-demo` key) |
 | `OPENROUTER_API_KEY`, `AI_MODEL_*` | as in development |
 | `ENABLE_TEST_SUPPORT` | `false` |
+| `GOOGLE_CLIENT_ID` | the OAuth client id (Web) — the API checks tokens with it, the web build shows the button |
 
 `REDIS_URL` and the ports are set by the compose file.
 

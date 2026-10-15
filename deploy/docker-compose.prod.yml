@@ -54,6 +54,8 @@ services:
         REACT_APP_API_URL: https://api.medvia.tech
         REACT_APP_API_GRAPHQL_URL: https://api.medvia.tech/graphql
         REACT_APP_API_WS: https://api.medvia.tech
+        # From ../.env through deploy/.env (a symlink, see README): empty = no Google button.
+        REACT_APP_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     image: medvia-web
     restart: unless-stopped
 
