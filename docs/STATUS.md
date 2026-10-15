@@ -18,12 +18,12 @@ Now the production release (frontend F9): `feature/seed-variety` (below) is read
   압구정라인의원 (Ansan). The new eight match no real clinic; Seoul Glow, Namsan and the tests'
   names were clean and kept.
 - **Photos** (`seed/photos/clinics|doctors/<slug>-<n>`, sources in `seed/photos/SOURCES.md`):
-  FLUX.1-schnell through its free HF Space (`npm run photos:generate`; HF_TOKEN; paid Inference
-  credits were not available) and Unsplash-licence interiors without people, signs or logos.
-  The landing-sample photos were dropped as clinic photos: all four show people (one is a museum
-  shop). Today: 3 of 24 portraits (Seoul Glow), 1–4 photos per clinic; the free GPU quota
-  (~9 images a day) makes the rest — `npm run photos:generate -- --only=doctors`, then
-  `npm run photos:attach` adds them to the existing records without a reseed.
+  clinics 3–4 each — five FLUX.1-schnell images (made before the user stopped AI generation) and
+  Unsplash / Pexels interiors without people, signs or logos; **doctors: Pexels-licence stock
+  portraits** of East Asian models (the user's decision), 8 women of 24 (~30 %, as asked — six
+  doctors were renamed to men, `Ko Min-seo` kept). The landing samples were dropped as clinic
+  photos (all show people; one is a museum shop). `photos:attach` updates existing records
+  without a reseed; `photos:generate` (AI) is kept but not used.
 - Dev DB reseeded; `clean:test` removed the old test accounts (also the F5 test clinic).
 
 ## getTrendingTreatments (2026-10-13)
