@@ -3,10 +3,28 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-13 — every planned backend milestone is done; small additions for the
-frontend's F1 since: `getTrendingTreatments`, `getClinics` `search.treatment`, seed photos and
-doctor careers, `clean:test`, the slimmed Postman suite. Next: whatever the frontend's F1 / F2
-needs; then the production release._
+_Last updated: 2026-10-15 — every planned backend milestone is done; frontend F0–F8 are done.
+Now the production release (frontend F9): `feature/seed-variety` (below) is ready, then a
+`DEMO_MODE` for production, Docker Compose files and the server (`medvia.tech`)._
+
+## Seed variety (2026-10-15, branch `feature/seed-variety`)
+
+- **8 clinics × 3 doctors, 50 patients** (the user's choice; was 15 / 40 / 50). Two clinics per
+  specialty, each with its own description, opening hours (Sunday, late Thursday, half-day
+  Saturday, 07:00 check-ups) — slots fall inside them — and three hand-written doctors (name,
+  gender, experience, bio, earlier post; generic places, never a real hospital).
+- **Names checked on 2026-10-15** (Korean web search): the old ones collided with real clinics —
+  한빛치과 (Seocho), 잠실가족치과, 이태원 글로벌치과 (with its director's name), Myeongdong Skin Lab,
+  압구정라인의원 (Ansan). The new eight match no real clinic; Seoul Glow, Namsan and the tests'
+  names were clean and kept.
+- **Photos** (`seed/photos/clinics|doctors/<slug>-<n>`, sources in `seed/photos/SOURCES.md`):
+  FLUX.1-schnell through its free HF Space (`npm run photos:generate`; HF_TOKEN; paid Inference
+  credits were not available) and Unsplash-licence interiors without people, signs or logos.
+  The landing-sample photos were dropped as clinic photos: all four show people (one is a museum
+  shop). Today: 3 of 24 portraits (Seoul Glow), 1–4 photos per clinic; the free GPU quota
+  (~9 images a day) makes the rest — `npm run photos:generate -- --only=doctors`, then
+  `npm run photos:attach` adds them to the existing records without a reseed.
+- Dev DB reseeded; `clean:test` removed the old test accounts (also the F5 test clinic).
 
 ## getTrendingTreatments (2026-10-13)
 
@@ -20,7 +38,7 @@ needs; then the production release._
   State-building mutations were kept, refused requests and repeat queries removed; a few
   assertions were re-counted (M8a one report, M8c 6 unread / 5 marked). Full run green with the
   batch running; socket 17/17; Jest untouched (239).
-- **Dev DB:** demo seed = 15 clinics, 40 doctors (3 at ten clinics, 2 at five), 50 patients,
+- **Dev DB:** demo seed = 8 clinics, 24 doctors (3 each; since 2026-10-15), 50 patients,
   ~150 bookings, 69 reviews. Test leftovers (accounts, test notices, orphan audit rows, old batch
   logs) are removed by `npm run clean:test -- --yes`, which `test:api` runs after every run.
   One manual account remains: `ali@gmail.com` (left untouched).

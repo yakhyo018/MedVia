@@ -332,3 +332,13 @@ One row per decision that would otherwise be rediscovered later. Newest mileston
 | `getTrendingTreatments(limit)` (public, 1–12, default 4): live treatments of live clinics grouped by name, ranked by PENDING / CONFIRMED / COMPLETED requests of the last 30 days, then clinics, then price; cached 10 min (`treatment:trending:<limit>`). | The landing page's "Trending treatments"; a quiet month still fills the list by how widely a treatment is offered. | Up to 10 minutes stale; grouping by name merges same-named treatments of different clinics (intended). | A stored counter per treatment (drifts); per-clinic rows (repeats one name four times). |
 | `getClinics` gains `search.treatment`: exact equality on `clinicTreatmentNames`. | `text` is fuzzy (Atlas Search, word OR + typos), so "Laser Toning" also found "Pico Laser" clinics; the trending card says "4 clinics" and must open those 4. | Exact name only (case and spelling as the clinic typed). | Phrase search in Atlas; regex on the text. |
 
+## Seed variety (2026-10-15)
+
+| Decision | Why | Risks | Alternatives |
+| --- | --- | --- | --- |
+| 8 clinics × 3 doctors (the user's choice), every clinic and doctor written by hand in `seed-data.ts`. | A small demo that reads like real places; portraits must match name and gender. | Fewer clinics to filter. | Faker combinations (templated, repetitive). |
+| Clinic names are searched in Korean before use; colliding ones renamed. | The site shows ratings and reviews; five old names belonged to real clinics. | A future real clinic may take a name. | Obviously fake names. |
+| Doctor portraits are AI-generated, never stock photos of real people (the user asked for Google images; declined). | A real person would appear as a fictional doctor with ratings; copyright of arbitrary images. | Free GPU quota: portraits arrive over days. | Stock portraits; no portraits. |
+| Clinic photos: AI or Unsplash-licence interiors without people, signs or logos; the landing samples dropped. | Licence recorded per file; people in a clinic photo would read as its staff or patients. | Few photos per clinic until the quota fills them. | Google images (licence unknown). |
+| `photos:attach` updates existing records instead of reseeding. | Production keeps ids, bookings and reviews when portraits arrive later. | Old copies are deleted only for clinics it replaces. | Reseed. |
+

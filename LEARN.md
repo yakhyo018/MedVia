@@ -2555,3 +2555,28 @@ On the server, append-only. A client-held history can be forged (fake assistant 
 **5. How did you choose a model?**
 
 By measurement: an eval of twelve single-step decisions graded by code — tool choice, valid arguments, grounding, injection resistance, language — run over the free candidates. The model is configuration, not code.
+
+## Seed variety — a demo that looks like real places (2026-10-15)
+
+**Problem.** The demo data was templated (15 clinics, 8 shared photos, one description pattern,
+the same hours, doctors without photos) — and several clinic names belonged to real Seoul
+clinics, which the site would show with invented ratings.
+
+- **Hand-written data** (`seed/seed-data.ts`): 8 clinics, each with a description, its own
+  opening hours and three doctors (name, gender, experience, bio, earlier post). Slots are built
+  from each clinic's hours, so a 07:00 check-up centre gets 07:00 slots and a closed Sunday none.
+- **Name check:** every name searched in Korean; collisions renamed.
+- **Photos without licence or likeness problems:** FLUX.1-schnell (Apache 2.0) through its free
+  Hugging Face Space — Gradio's REST API: `POST /gradio_api/call/infer` returns an event id, the
+  `GET` stream ends with `event: complete` and the file URL — plus Unsplash-licence interiors
+  without people. Generated faces are nobody's. The free GPU quota is small, so the script skips
+  filled slots and resumes; `photos:attach` brings later photos into existing records.
+
+### Interview questions
+
+1. **Why not take doctor photos from the web?** Copyright aside, a real person would be shown as
+   a fictional doctor with ratings — misrepresenting them. Generated faces avoid both.
+2. **How do you make a slow, quota-limited job safe to rerun?** Idempotent slots (skip existing
+   files), stop at the first refusal, record what was made (manifest), resume next run.
+3. **Why attach photos instead of reseeding?** Reseeding changes every id; in production that
+   would break bookings, reviews and links. Updating the two fields keeps everything else.

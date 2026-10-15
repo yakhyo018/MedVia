@@ -32,114 +32,318 @@ export const DISTRICT_ADDRESS: Record<District, string> = {
 	[SONGPA]: 'Olympic-ro, Songpa-gu, Seoul',
 };
 
-export const CLINICS: { name: string; nameKo: string; specialty: Specialty; district: District }[] =
-	[
-		{
-			name: 'Seoul Glow Dermatology',
-			nameKo: '서울글로우피부과',
-			specialty: DERMATOLOGY,
-			district: GANGNAM,
-		},
-		{
-			name: 'Apgujeong Line Clinic',
-			nameKo: '압구정라인의원',
-			specialty: PLASTIC_SURGERY,
-			district: GANGNAM,
-		},
-		{ name: 'Hanbit Dental Center', nameKo: '한빛치과', specialty: DENTAL, district: SEOCHO },
-		{
-			name: 'Namsan Health Check-up',
-			nameKo: '남산건강검진센터',
-			specialty: CHECK_UP,
-			district: JUNG,
-		},
-		{
-			name: 'Mapo Bright Dermatology',
-			nameKo: '마포브라이트피부과',
-			specialty: DERMATOLOGY,
-			district: MAPO,
-		},
-		{
-			name: 'Cheongdam Aesthetic',
-			nameKo: '청담에스테틱의원',
-			specialty: PLASTIC_SURGERY,
-			district: GANGNAM,
-		},
-		{
-			name: 'Yongsan Smile Dental',
-			nameKo: '용산스마일치과',
-			specialty: DENTAL,
-			district: YONGSAN,
-		},
-		{
-			name: 'Myeongdong Skin Lab',
-			nameKo: '명동스킨랩피부과',
-			specialty: DERMATOLOGY,
-			district: JUNG,
-		},
-		{
-			name: 'Gangnam Beauty Lab',
-			nameKo: '강남뷰티랩의원',
-			specialty: PLASTIC_SURGERY,
-			district: GANGNAM,
-		},
-		{
-			name: 'Sinsa Clear Skin Clinic',
-			nameKo: '신사클리어피부과',
-			specialty: DERMATOLOGY,
-			district: GANGNAM,
-		},
-		{ name: 'Jamsil Family Dental', nameKo: '잠실가족치과', specialty: DENTAL, district: SONGPA },
-		{
-			name: 'Jongno Medical Check-up',
-			nameKo: '종로건강검진의원',
-			specialty: CHECK_UP,
-			district: JONGNO,
-		},
-		{
-			name: 'Seocho Pure Dermatology',
-			nameKo: '서초퓨어피부과',
-			specialty: DERMATOLOGY,
-			district: SEOCHO,
-		},
-		{
-			name: 'Hongdae V-Line Clinic',
-			nameKo: '홍대브이라인의원',
-			specialty: PLASTIC_SURGERY,
-			district: MAPO,
-		},
-		{
-			name: 'Itaewon Global Dental',
-			nameKo: '이태원글로벌치과',
-			specialty: DENTAL,
-			district: YONGSAN,
-		},
-		{
-			name: 'Songpa Wellness Check-up',
-			nameKo: '송파웰니스검진센터',
-			specialty: CHECK_UP,
-			district: SONGPA,
-		},
-		{
-			name: 'Insadong Hanok Skin Clinic',
-			nameKo: '인사동한옥피부과',
-			specialty: DERMATOLOGY,
-			district: JONGNO,
-		},
-		{
-			name: 'Garosu Contour Clinic',
-			nameKo: '가로수컨투어의원',
-			specialty: PLASTIC_SURGERY,
-			district: GANGNAM,
-		},
-		{ name: 'Euljiro White Dental', nameKo: '을지로화이트치과', specialty: DENTAL, district: JUNG },
-		{
-			name: 'Banpo Care Check-up',
-			nameKo: '반포케어검진센터',
-			specialty: CHECK_UP,
-			district: SEOCHO,
-		},
-	];
+/** One of a clinic's doctors: written by hand so the name, the portrait and the story agree. */
+export interface SeedDoctor {
+	name: string;
+	nameKo: string;
+	female: boolean;
+	experience: number;
+	bio: string;
+	/** Earlier work before this clinic (generic places: a fictional doctor is never tied to a real one). */
+	before?: string;
+}
+
+/** Opening hours: weekday 0 = Sunday … 6 = Saturday; a missing day is closed. */
+export interface SeedHours {
+	day: number;
+	open: string;
+	close: string;
+}
+
+export interface SeedClinic {
+	/** File-name stem of the clinic's photos (seed/photos/clinics/<slug>-<n>.jpg). */
+	slug: string;
+	name: string;
+	nameKo: string;
+	specialty: Specialty;
+	district: District;
+	desc: string;
+	hours: SeedHours[];
+	doctors: [SeedDoctor, SeedDoctor, SeedDoctor];
+}
+
+const weekdays = (open: string, close: string, days = [1, 2, 3, 4, 5]): SeedHours[] =>
+	days.map((day) => ({ day, open, close }));
+
+/**
+ * Eight fictional Seoul clinics, two per specialty, three doctors each. Every name was searched
+ * (in Korean) on 2026-10-15 and matched no real clinic — the site shows ratings and reviews for
+ * them, so they must never point at a real place or person.
+ */
+export const CLINICS: SeedClinic[] = [
+	{
+		slug: 'seoul-glow',
+		name: 'Seoul Glow Dermatology',
+		nameKo: '서울글로우피부과',
+		specialty: DERMATOLOGY,
+		district: GANGNAM,
+		desc: 'A laser and pigmentation clinic two minutes from Gangnam Station. Most visitors come for toning and melasma care before a trip home, so every plan is written for a short stay — results, aftercare and the next visit fit into one week. Russian-speaking coordinator at the front desk.',
+		hours: [
+			...weekdays('10:00', '19:00', [1, 2, 3, 5]),
+			{ day: 4, open: '10:00', close: '21:00' },
+			{ day: 6, open: '10:00', close: '16:00' },
+		],
+		doctors: [
+			{
+				name: 'Han Seo-yeon',
+				nameKo: '한서연',
+				female: true,
+				experience: 14,
+				bio: 'Focuses on pigmentation — melasma, sun spots and post-acne marks — with low-energy laser toning that keeps downtime to a day.',
+				before: 'Dermatologist at a skin clinic, Busan',
+			},
+			{
+				name: 'Kim Na-rae',
+				nameKo: '김나래',
+				female: true,
+				experience: 8,
+				bio: 'Treats acne and acne scars in steps: calming the skin first, then resurfacing. Explains every session with photos so patients can follow their progress.',
+			},
+			{
+				name: 'Park Joon-ho',
+				nameKo: '박준호',
+				female: false,
+				experience: 11,
+				bio: 'Works with skin boosters and redness-prone skin. Prefers a few gentle sessions over one aggressive one, especially for first-time visitors.',
+				before: 'Clinical fellow at a university hospital, Seoul',
+			},
+		],
+	},
+	{
+		slug: 'myeongdong-mintleaf',
+		name: 'Myeongdong Mintleaf Dermatology',
+		nameKo: '명동민트리프피부과',
+		specialty: DERMATOLOGY,
+		district: JUNG,
+		desc: 'A bright, small clinic above the Myeongdong shopping street, open on Sundays for travellers. Known for hydration and sensitive-skin programmes; consultations in Uzbek, Russian and Kazakh through the clinic interpreter.',
+		hours: [
+			...weekdays('10:30', '20:00', [1, 2, 3, 4, 5, 6]),
+			{ day: 0, open: '11:00', close: '17:00' },
+		],
+		doctors: [
+			{
+				name: 'Lee Ha-eun',
+				nameKo: '이하은',
+				female: true,
+				experience: 9,
+				bio: 'Builds hydration and barrier-repair plans for dry and sensitive skin, often combined with a skin booster before a long flight home.',
+			},
+			{
+				name: 'Choi Min-jae',
+				nameKo: '최민재',
+				female: false,
+				experience: 16,
+				bio: 'Senior dermatologist for scars and texture. Uses fractional laser carefully on darker skin types and plans sessions around the patient’s travel dates.',
+				before: 'Dermatologist at a general hospital, Daegu',
+			},
+			{
+				name: 'Yoon So-hee',
+				nameKo: '윤소희',
+				female: true,
+				experience: 6,
+				bio: 'Sees most first visits: skin analysis, a written plan in the patient’s language and an honest estimate of how many sessions are worth it.',
+			},
+		],
+	},
+	{
+		slug: 'dosan-petalline',
+		name: 'Dosan Petalline Clinic',
+		nameKo: '도산페탈라인의원',
+		specialty: PLASTIC_SURGERY,
+		district: GANGNAM,
+		desc: 'A non-surgical contouring clinic near Dosan Park: fillers, botox and thread lifts with a natural finish. Each treatment starts with a 3D face scan and a printed plan the patient takes home.',
+		hours: [...weekdays('10:00', '19:00'), { day: 6, open: '10:00', close: '15:00' }],
+		doctors: [
+			{
+				name: 'Jung Woo-jin',
+				nameKo: '정우진',
+				female: false,
+				experience: 18,
+				bio: 'Plastic surgeon who moved to non-surgical contouring. Known for conservative filler amounts — the goal is that friends notice rest, not work.',
+				before: 'Plastic surgeon at a surgical clinic, Seoul',
+			},
+			{
+				name: 'Kang Ye-jin',
+				nameKo: '강예진',
+				female: true,
+				experience: 10,
+				bio: 'Specialises in jawline botox and lip filler, with a slow, two-step approach for patients trying fillers for the first time.',
+			},
+			{
+				name: 'Oh Seung-min',
+				nameKo: '오승민',
+				female: false,
+				experience: 7,
+				bio: 'Performs thread lifts and under-eye treatments; spends the extra time on aftercare instructions for patients flying within days.',
+			},
+		],
+	},
+	{
+		slug: 'cheongdam-willowgate',
+		name: 'Cheongdam Willowgate Clinic',
+		nameKo: '청담윌로우게이트의원',
+		specialty: PLASTIC_SURGERY,
+		district: GANGNAM,
+		desc: 'A quiet clinic in Cheongdam for lifting and anti-ageing: ultrasound and radio-frequency lifting, fillers and skin boosters. Private rooms, no waiting room — every patient has a fixed time.',
+		hours: weekdays('09:30', '18:30', [1, 2, 3, 4, 5, 6]),
+		doctors: [
+			{
+				name: 'Shin Hye-won',
+				nameKo: '신혜원',
+				female: true,
+				experience: 20,
+				bio: 'Medical director. Plans lifting by decade rather than by device — what to do now, and what to leave for later.',
+				before: 'Plastic surgeon at a university-affiliated hospital, Incheon',
+			},
+			{
+				name: 'Lim Dong-hyun',
+				nameKo: '임동현',
+				female: false,
+				experience: 12,
+				bio: 'Performs ultrasound and RF lifting; measures skin thickness first so the energy is set for the face, not for the machine.',
+			},
+			{
+				name: 'Song Ji-woo',
+				nameKo: '송지우',
+				female: true,
+				experience: 5,
+				bio: 'Works with skin boosters and fine lines around the eyes; known among patients for a gentle hand and clear explanations.',
+			},
+		],
+	},
+	{
+		slug: 'seorae-maplewood',
+		name: 'Seorae Maplewood Dental',
+		nameKo: '서래메이플우드치과',
+		specialty: DENTAL,
+		district: SEOCHO,
+		desc: 'A family dental clinic in the Seorae Village area, popular with foreign residents. Implants, crowns and whitening planned around short stays: digital scans, same-week crowns where possible, and a written plan for the dentist back home.',
+		hours: [...weekdays('09:00', '18:00'), { day: 6, open: '09:00', close: '13:00' }],
+		doctors: [
+			{
+				name: 'Baek Jae-min',
+				nameKo: '백재민',
+				female: false,
+				experience: 17,
+				bio: 'Implant surgeon. Plans two-visit implant treatment for patients who live abroad and explains each step with the 3D scan on screen.',
+				before: 'Dentist at a dental hospital, Gwangju',
+			},
+			{
+				name: 'Seo Eun-ji',
+				nameKo: '서은지',
+				female: true,
+				experience: 9,
+				bio: 'Restorative dentist for crowns, resin fillings and whitening; keeps a gentle pace for anxious patients.',
+			},
+			{
+				name: 'Hwang Tae-yang',
+				nameKo: '황태양',
+				female: false,
+				experience: 6,
+				bio: 'Sees check-ups and scaling, and treats gum problems before larger work begins.',
+			},
+		],
+	},
+	{
+		slug: 'itaewon-compass',
+		name: 'Itaewon Compass Dental',
+		nameKo: '이태원컴퍼스치과',
+		specialty: DENTAL,
+		district: YONGSAN,
+		desc: 'An international dental clinic in Itaewon with evening hours on weekdays. Most patients come for scaling, whitening and veneers; the team writes treatment notes in English and the patient’s own language.',
+		hours: weekdays('11:00', '20:00', [1, 2, 3, 4, 5, 6]),
+		doctors: [
+			{
+				name: 'Moon Yu-na',
+				nameKo: '문유나',
+				female: true,
+				experience: 13,
+				bio: 'Cosmetic dentist for whitening and laminate veneers; designs the smile on a mock-up first so nothing is decided in the chair.',
+				before: 'Dentist at a dental clinic, Busan',
+			},
+			{
+				name: 'Jang Hyun-woo',
+				nameKo: '장현우',
+				female: false,
+				experience: 10,
+				bio: 'General dentist for fillings, root canals and urgent pain — keeps same-day slots for travellers with a toothache.',
+			},
+			{
+				name: 'Ko Min-seo',
+				nameKo: '고민서',
+				female: true,
+				experience: 4,
+				bio: 'Hygiene and prevention: scaling, polishing and a home-care routine explained in simple steps.',
+			},
+		],
+	},
+	{
+		slug: 'namsan-health',
+		name: 'Namsan Health Check-up',
+		nameKo: '남산건강검진센터',
+		specialty: CHECK_UP,
+		district: JUNG,
+		desc: 'A check-up centre at the foot of Namsan with half-day programmes: blood work, ultrasound, endoscopy and a doctor’s summary the same afternoon. Results are explained with an interpreter and sent home as a PDF.',
+		hours: [...weekdays('07:30', '16:30'), { day: 6, open: '07:30', close: '12:30' }],
+		doctors: [
+			{
+				name: 'Yoo Sang-hoon',
+				nameKo: '유상훈',
+				female: false,
+				experience: 22,
+				bio: 'Internal medicine specialist who reads the full check-up and explains it in one conversation — what is fine, what to watch, what to do next.',
+				before: 'Internist at a general hospital, Seoul',
+			},
+			{
+				name: 'Nam Ji-eun',
+				nameKo: '남지은',
+				female: true,
+				experience: 11,
+				bio: 'Performs gastroscopy and colonoscopy under sedation; sees many first-time patients and walks them through the preparation the day before.',
+			},
+			{
+				name: 'Cho Seong-jin',
+				nameKo: '조성진',
+				female: false,
+				experience: 8,
+				bio: 'Abdominal and thyroid ultrasound; known for showing patients the screen and explaining what they see.',
+			},
+		],
+	},
+	{
+		slug: 'jongno-lantern',
+		name: 'Jongno Lantern Health Center',
+		nameKo: '종로랜턴건강검진센터',
+		specialty: CHECK_UP,
+		district: JONGNO,
+		desc: 'A modern check-up centre near Insadong for busy travellers: express and comprehensive programmes, women’s health screening and cardiology tests. Breakfast after fasting tests is included.',
+		hours: [...weekdays('07:00', '17:00'), { day: 6, open: '07:00', close: '13:00' }],
+		doctors: [
+			{
+				name: 'Kwon Mi-rae',
+				nameKo: '권미래',
+				female: true,
+				experience: 15,
+				bio: 'Internal medicine and women’s health screening; plans the programme with the patient beforehand so no test is a surprise.',
+				before: 'Internist at a health screening centre, Daejeon',
+			},
+			{
+				name: 'Bae Jun-seo',
+				nameKo: '배준서',
+				female: false,
+				experience: 12,
+				bio: 'Cardiology tests — ECG, echocardiography and stress tests — with a plain-language summary of heart risk.',
+			},
+			{
+				name: 'Ahn Seo-jin',
+				nameKo: '안서진',
+				female: true,
+				experience: 7,
+				bio: 'Leads the express programme for travellers with one free morning, and follows up on results by message after the visit.',
+			},
+		],
+	},
+];
 
 /** Romanised and Hangul, combined into 40 doctors. */
 export const KOREAN_SURNAMES: [string, string][] = [
