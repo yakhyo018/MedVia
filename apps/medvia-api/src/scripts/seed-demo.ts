@@ -6,7 +6,8 @@
  *   npm run seed:demo              refuses if the demo data already exists
  *   npm run seed:demo -- --reset   removes the demo data (and only it), then seeds again
  *
- * Never in production. Every account is <name>@seed.medvia.test with SEED_PASSWORD from .env;
+ * Never in a real production: only with DEMO_MODE=true (the portfolio site, synthetic data only,
+ * SEED_PASSWORD of 16+ characters). Every account is <name>@seed.medvia.test with SEED_PASSWORD;
  * the demo logins are feride@seed.medvia.test (patient), clinic01@seed.medvia.test (clinic),
  * doctor01@seed.medvia.test (doctor) and admin@seed.medvia.test (admin).
  *
@@ -861,13 +862,20 @@ async function seed(m: Models, password: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-	if (process.env.NODE_ENV === 'production') throw new Error('seed:demo never runs in production.');
+	// Production only as the demo site (DEMO_MODE=true): synthetic data in MONGO_PROD.
+	const production = process.env.NODE_ENV === 'production';
+	if (production && process.env.DEMO_MODE !== 'true')
+		throw new Error(
+			'seed:demo runs in production only with DEMO_MODE=true (a demo-data-only site).',
+		);
 	const password = process.env.SEED_PASSWORD;
-	if (!password || password.length < 8)
-		throw new Error('Set SEED_PASSWORD (at least 8 characters) in .env first.');
-	if (!process.env.MONGO_DEV) throw new Error('No MONGO_DEV in .env.');
+	const minimum = production ? 16 : 8;
+	if (!password || password.length < minimum)
+		throw new Error(`Set SEED_PASSWORD (at least ${minimum} characters) in .env first.`);
+	const uri = production ? process.env.MONGO_PROD : process.env.MONGO_DEV;
+	if (!uri) throw new Error(`No ${production ? 'MONGO_PROD' : 'MONGO_DEV'} in .env.`);
 
-	await mongoose.connect(process.env.MONGO_DEV);
+	await mongoose.connect(uri);
 	const m = models();
 	const exists = await m.Member.exists({ memberEmail: `admin${DOMAIN}` });
 	if (process.argv.includes('--reset')) await reset(m);

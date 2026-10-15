@@ -43,6 +43,8 @@ export const envValidationSchema = Joi.object({
 
 	// AI-1. fake (default, tests) | openrouter (demo, synthetic data) | anthropic (production).
 	// The production lock and the per-provider key check live in ai.rules (checkProvider).
+	// true = this production holds synthetic demo data only (seed:demo, OpenRouter allowed).
+	DEMO_MODE: Joi.boolean().default(false),
 	AI_PROVIDER: Joi.string().valid('fake', 'openrouter', 'anthropic').default('fake'),
 	OPENROUTER_API_KEY: Joi.string().allow('').optional(),
 	ANTHROPIC_API_KEY: Joi.string().allow('').optional(),

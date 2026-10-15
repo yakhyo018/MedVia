@@ -24,6 +24,31 @@ describe('checkProvider — the boot-time lock', () => {
 		).toThrow('is not allowed in production');
 	});
 
+	it('accepts openrouter in production only on a demo site (DEMO_MODE=true)', () => {
+		expect(
+			checkProvider({
+				NODE_ENV: 'production',
+				DEMO_MODE: 'true',
+				AI_PROVIDER: 'openrouter',
+				OPENROUTER_API_KEY: 'k',
+			}),
+		).toBe('openrouter');
+		expect(() =>
+			checkProvider({
+				NODE_ENV: 'production',
+				DEMO_MODE: 'false',
+				AI_PROVIDER: 'openrouter',
+				OPENROUTER_API_KEY: 'k',
+			}),
+		).toThrow('DEMO_MODE=true');
+	});
+
+	it('refuses fake in production even on a demo site', () => {
+		expect(() =>
+			checkProvider({ NODE_ENV: 'production', DEMO_MODE: 'true', AI_PROVIDER: 'fake' }),
+		).toThrow('is not allowed in production');
+	});
+
 	it('runs anthropic in production', () => {
 		expect(
 			checkProvider({ NODE_ENV: 'production', AI_PROVIDER: 'anthropic', ANTHROPIC_API_KEY: 'k' }),
