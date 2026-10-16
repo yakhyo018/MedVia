@@ -7,6 +7,14 @@ _Last updated: 2026-10-15 — every planned backend milestone is done; frontend 
 Now the production release (frontend F9): `feature/seed-variety` (below) is ready, then a
 `DEMO_MODE` for production, Docker Compose files and the server (`medvia.tech`)._
 
+## Deploy files (2026-10-16)
+
+- `deploy/` removed by the user. Now `docker-compose.yml` (production, nestar style: Redis, API,
+  batch on `node:22.20.0` with the repository mounted; ports on 127.0.0.1; the batch waits for
+  the API's healthcheck) and `deploy.sh` (reset → checkout main → pull →
+  `up -d --force-recreate medvia-api medvia-batch`). Local Redis: `docker compose up -d medvia-redis`
+  (the service was `redis`). `Dockerfile` / `.dockerignore` are no longer used.
+
 ## Health-tip photos (2026-10-16, branch `feature/article-images`)
 
 - The user's request: the existing article API, no new module — `articleImages` (0–2 paths, the

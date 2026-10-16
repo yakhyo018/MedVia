@@ -5,9 +5,6 @@ git reset --hard
 git checkout main
 git pull origin main
 
-# The web image is built from the frontend repository next to this one.
-git -C ../MedVia-next reset --hard
-git -C ../MedVia-next checkout main
-git -C ../MedVia-next pull origin main
-
-docker compose -f deploy/docker-compose.prod.yml up -d --build
+# The app containers run the mounted folder: recreate them so they install, build and start the
+# new code (a plain `up -d` leaves running containers alone). Redis keeps running.
+docker compose up -d --force-recreate medvia-api medvia-batch
