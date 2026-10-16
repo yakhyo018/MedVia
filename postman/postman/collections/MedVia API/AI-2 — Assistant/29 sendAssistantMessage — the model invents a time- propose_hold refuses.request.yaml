@@ -1,0 +1,28 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation A($input: AssistantMessageInput!) { sendAssistantMessage(input: $input) { sessionId text toolsUsed clinics { clinicId clinicName district rating minPriceKrw } slots { treatmentId doctorId slotStart label } pendingHold { treatmentId doctorId slotStart label clinicName treatmentName priceKrw expiresAt } } }
+    variables: |-
+      { "input": { "text": "#forged-slot book it", "sessionId": "{{sessionId}}" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      const r = gql.sendAssistantMessage || {};
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('it tried propose_hold', () => pm.expect(r.toolsUsed).to.eql(['propose_hold']));
+      pm.test('nothing proposed', () => pm.expect(r.pendingHold).to.eql(null));
+      pm.test('the patient is told', () => pm.expect(r.text).to.eql('[fake] That time cannot be held. Please choose another one.'));
+    language: text/javascript
+order: 29000

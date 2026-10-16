@@ -1,0 +1,31 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{doctorToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query GetMyDoctorProfile {
+        getMyDoctorProfile {
+          _id doctorName doctorNameKo doctorSpecialty doctorImage doctorBio doctorViews doctorLikes doctorFollowers
+          doctorCareer { title place from to }
+          clinicData { clinicName }
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const d = gql.getMyDoctorProfile || {};
+      pm.test('own page', () => pm.expect(d._id).to.eql(pm.environment.get('doctorId')));
+      pm.test('clinic shown', () => pm.expect((d.clinicData || {}).clinicName).to.eql(pm.environment.get('clinicName')));
+    language: text/javascript
+order: 20000

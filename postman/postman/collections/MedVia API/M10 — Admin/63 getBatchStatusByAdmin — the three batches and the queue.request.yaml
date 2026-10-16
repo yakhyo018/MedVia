@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query { getBatchStatusByAdmin { batches { batchName batchStatus batchResult startedAt finishedAt } queue { delayed waiting active failed } } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const v = gql.getBatchStatusByAdmin || {};
+      pm.test('SLOT_RELEASE, RECOUNT, RANK', () => pm.expect((v.batches || []).map((b) => b.batchName)).to.eql(['SLOT_RELEASE', 'RECOUNT', 'RANK']));
+      pm.test('the queue answers with counts', () => pm.expect(Object.values(v.queue || {}).every((n) => Number.isInteger(n))).to.be.true);
+    language: text/javascript
+order: 63000

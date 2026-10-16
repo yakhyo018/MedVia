@@ -1,0 +1,30 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation A($input: AssistantMessageInput!) { sendAssistantMessage(input: $input) { sessionId text toolsUsed clinics { clinicId clinicName district rating minPriceKrw } slots { treatmentId doctorId slotStart label } pendingHold { treatmentId doctorId slotStart label clinicName treatmentName priceKrw expiresAt } } }
+    variables: |-
+      { "input": { "text": "book the first one", "sessionId": "{{sessionId}}" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      const r = gql.sendAssistantMessage || {};
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('propose_hold', () => pm.expect(r.toolsUsed).to.eql(['propose_hold']));
+      const h = r.pendingHold || {};
+      pm.test('the proposal names clinic, treatment and price', () => pm.expect([h.clinicName, h.treatmentName, h.priceKrw]).to.eql(['Assistant Test Clinic ' + pm.environment.get('stamp'), 'Laser Toning ' + pm.environment.get('token'), 99000]));
+      pm.test('it waits about 15 minutes', () => pm.expect(new Date(h.expiresAt) - Date.now()).to.be.within(13 * 60000, 15 * 60000));
+      pm.environment.set('proposedStart', h.slotStart || '');
+    language: text/javascript
+order: 22000

@@ -1,0 +1,26 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query QR($input: ReportsInquiry!) { getReportsByAdmin(input: $input) { list { reportRefId reportGroup targetText targetStatus } metaCounter { total } } }
+    variables: |-
+      { "input": { "page": 1, "limit": 100 } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const mine = ((gql.getReportsByAdmin || {}).list || []).filter((r) => r.reportRefId === pm.environment.get('freeId'));
+      pm.test('1 pending, with the title; one report does not hide the post', () => pm.expect([mine.length, (mine[0] || {}).targetStatus, ((mine[0] || {}).targetText || '').includes(pm.environment.get('token'))]).to.eql([1, 'ACTIVE', true]));
+    language: text/javascript
+order: 48000

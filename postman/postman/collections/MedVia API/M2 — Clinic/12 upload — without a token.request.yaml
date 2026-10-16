@@ -1,0 +1,18 @@
+$kind: http-request
+url: '{{baseUrl}}/upload/image?target=clinic'
+method: POST
+body:
+  type: formdata
+  content:
+    - key: file
+      type: file
+      src: fixtures/clinic-photo.png
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json() || {};
+      const msg = Array.isArray(body.message) ? body.message.join('; ') : (body.message || '');
+      pm.test('status 400', () => pm.response.to.have.status(400));
+      pm.test('refused: Bearer token is not provided!', () => pm.expect(msg).to.eql('Bearer token is not provided!'));
+    language: text/javascript
+order: 12000

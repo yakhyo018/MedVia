@@ -1,0 +1,26 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation B($input: SlotsBlockInput!) { setSlotsBlocked(input: $input) { _id slotStatus slotStart slotBlockReason doctorId bookingId bookingData { bookingCode bookingStatus patientName treatmentName } } }
+    variables: |-
+      { "input": { "slotIds": ["{{slot1130Id}}"], "blocked": false } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const s = (gql.setSlotsBlocked || [])[0] || {};
+      pm.test('OPEN, no reason', () => pm.expect([s.slotStatus, s.slotBlockReason]).to.eql(['OPEN', null]));
+    language: text/javascript
+order: 27000

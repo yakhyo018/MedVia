@@ -1,0 +1,44 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{doctorToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation UpdateMyDoctorProfile($input: DoctorProfileUpdate!) {
+        updateMyDoctorProfile(input: $input) {
+          _id doctorNameKo doctorImage doctorBio doctorSpecialty
+          doctorCareer { title place from to }
+        }
+      }
+    variables: |-
+      {
+        "input": {
+          "doctorNameKo": "한서연",
+          "doctorImage": "{{doctorImage}}",
+          "doctorBio": "Board-certified dermatologist specialising in pigmentation and melasma.",
+          "doctorCareer": [
+            { "title": "Dermatologist", "place": "{{clinicName}}", "from": "2020", "to": "present" },
+            { "title": "M.D.", "place": "Seoul National University", "from": "2008", "to": "2014" }
+          ]
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const d = gql.updateMyDoctorProfile || {};
+      pm.test('Korean name stored', () => pm.expect(d.doctorNameKo).to.eql('한서연'));
+      pm.test('photo stored', () => pm.expect(d.doctorImage).to.eql(pm.environment.get('doctorImage')));
+      pm.test('two career rows, in order', () => pm.expect((d.doctorCareer || []).map((c) => c.title)).to.eql(['Dermatologist', 'M.D.']));
+      pm.test('specialty untouched', () => pm.expect(d.doctorSpecialty).to.eql('DERMATOLOGY'));
+    language: text/javascript
+order: 25000

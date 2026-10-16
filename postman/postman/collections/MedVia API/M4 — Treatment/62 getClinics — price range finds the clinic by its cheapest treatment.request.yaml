@@ -1,0 +1,32 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      query G($input: ClinicsInquiry!) { getClinics(input: $input) { list { _id clinicMinPrice } } exact: getClinics(input: { page: 1, limit: 50, search: { treatment: "{{treatmentName}}" } }) { list { _id clinicTreatmentNames } } }
+    variables: |-
+      {
+        "input": { "page": 1, "limit": 50, "search": { "specialty": "DERMATOLOGY", "districts": ["GANGNAM"], "priceMin": 70000, "priceMax": 90000 } }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const list = (gql.getClinics || {}).list || [];
+      const c = list.find((x) => x._id === pm.environment.get('clinicId')) || {};
+      pm.test('the clinic is listed with min ₩80,000', () => pm.expect(c.clinicMinPrice).to.eql(80000));
+      const exact = (gql.exact || {}).list || [];
+      const name = pm.environment.get('treatmentName');
+      pm.test('treatment filter: only clinics offering exactly this name, this clinic included', () => pm.expect([exact.every((x) => (x.clinicTreatmentNames || []).includes(name)), exact.some((x) => x._id === pm.environment.get('clinicId'))]).to.eql([true, true]));
+      pm.test('every listed clinic is inside the range', () => pm.expect(list.every((x) => x.clinicMinPrice >= 70000 && x.clinicMinPrice <= 90000)).to.be.true);
+    language: text/javascript
+order: 62000

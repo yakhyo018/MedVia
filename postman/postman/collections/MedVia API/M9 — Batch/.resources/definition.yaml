@@ -1,0 +1,3 @@
+$kind: collection
+description: "The booking queue and the batch. Delayed jobs: a request expires at its deadline (the job exists from the moment of the request, runs once, and an early run changes nothing); \"your visit is coming up\" goes out a day before, once, and respects memberNotify.visitReminders. Batch (medvia-batch on batchUrl): SLOT_RELEASE frees holds that ran out, RECOUNT heals drifted counters, RANK writes clinicScore / doctorScore for the Recommended order; every run is logged. Needs ADMIN_EMAIL / ADMIN_PASSWORD, MEDICAL_ENC_KEY, ENABLE_TEST_SUPPORT=true, and both apps running: npm run start:dev and npm run start:dev:batch."
+order: 13000

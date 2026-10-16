@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation CC($input: CommentInput!) { createComment(input: $input) { _id commentStatus commentContent authorName authorType } }
+    variables: |-
+      { "input": { "articleId": "{{tipId}}", "commentContent": "Call +82 10 1234 5678 for cheap vials!", "commentLang": "EN" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.environment.set('tipCommentId', (gql.createComment || {})._id || '');
+    language: text/javascript
+order: 53000

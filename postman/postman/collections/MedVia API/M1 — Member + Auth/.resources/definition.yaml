@@ -1,0 +1,3 @@
+$kind: collection
+description: Sign-up, sign-in (and a wrong password), refresh rotation, logout, password change, admin list and block. Needs ADMIN_EMAIL / ADMIN_PASSWORD in .env and `npm run seed:admin`. Creates throwaway @medvia.test accounts on every run.
+order: 2000

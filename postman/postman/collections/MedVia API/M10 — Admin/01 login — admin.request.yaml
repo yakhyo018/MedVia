@@ -1,0 +1,49 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation L($input: LoginInput!) { login(input: $input) { _id accessToken } }
+    variables: |-
+      { "input": { "memberEmail": "{{adminEmail}}", "memberPassword": "{{adminPassword}}" } }
+scripts:
+  - type: beforeRequest
+    code: |-
+      const stamp = Date.now();
+      pm.environment.set('stamp', String(stamp));
+      pm.environment.set('token', 'ad' + stamp.toString(36));
+      const slotDate = new Date(stamp + 9 * 3600000 + 3 * 86400000).toISOString().slice(0, 10);
+      pm.environment.set('slotDate', slotDate);
+      pm.environment.set('t1000', new Date(slotDate + 'T10:00:00+09:00').toISOString());
+      pm.environment.set('startedAt', new Date(stamp - 60000).toISOString());
+      const adminClaims = (() => {
+        const part = (pm.environment.get('adminToken') || '').split('.')[1] || '';
+        try {
+          const b64 = part.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((part.length + 3) % 4);
+          return JSON.parse(atob(b64));
+        } catch (e) {
+          return null;
+        }
+      })();
+      if (adminClaims && adminClaims.memberType === 'ADMIN' && adminClaims.exp * 1000 - Date.now() > 5 * 60000) {
+        pm.environment.set('adminId', adminClaims.sub);
+        pm.execution.skipRequest();
+      }
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('adminEmail / adminPassword are configured', () => pm.expect(pm.environment.get('adminEmail'), 'add ADMIN_EMAIL and ADMIN_PASSWORD to .env').to.be.a('string').and.not.empty);
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.environment.set('adminToken', (gql.login || {}).accessToken || '');
+      pm.environment.set('adminId', (gql.login || {})._id || '');
+    language: text/javascript
+order: 1000

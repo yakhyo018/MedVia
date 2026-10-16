@@ -1,0 +1,27 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation ResubmitClinic {
+        resubmitClinic { _id clinicStatus submittedAt }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const c = gql.resubmitClinic || {};
+      pm.test('status PENDING', () => pm.expect(c.clinicStatus).to.eql('PENDING'));
+      pm.test('submittedAt moved forward', () => pm.expect(Date.now() - Date.parse(c.submittedAt)).to.be.below(60000));
+    language: text/javascript
+order: 20000

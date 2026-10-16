@@ -1,0 +1,32 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query GetAuditLogsByAdmin($input: AuditLogsInquiry!) {
+        getAuditLogsByAdmin(input: $input) { auditAction auditNote memberId createdAt }
+      }
+    variables: |-
+      { "input": { "auditGroup": "CLINIC", "auditRefId": "{{clinicId}}" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const logs = gql.getAuditLogsByAdmin || [];
+      pm.test('four decisions in order', () => pm.expect(logs.map((l) => l.auditAction)).to.eql([
+        'CLINIC_RESTORE', 'CLINIC_SUSPEND', 'CLINIC_APPROVE', 'CLINIC_REQUEST_CHANGES',
+      ]));
+      pm.test('refused attempts are not logged', () => pm.expect(logs).to.have.length(4));
+      pm.test('each one names the admin', () => pm.expect(logs.every((l) => l.memberId === pm.environment.get('adminId'))).to.be.true);
+    language: text/javascript
+order: 55000

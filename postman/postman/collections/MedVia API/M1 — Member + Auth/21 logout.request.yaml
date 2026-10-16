@@ -1,0 +1,25 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{secondToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation Logout {
+        logout
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('returns true', () => pm.expect(gql.logout).to.eql(true));
+      pm.test('refresh cookie cleared', () => pm.expect(pm.cookies.has('medvia_rt')).to.be.false);
+    language: text/javascript
+order: 21000

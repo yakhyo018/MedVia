@@ -1,0 +1,20 @@
+name: MedVia Local
+values:
+  - key: baseUrl
+    value: 'http://localhost:3000'
+  - key: batchUrl
+    value: 'http://localhost:3001'
+  - key: token
+    value: ''
+  - key: tmpEmail
+    value: ''
+  - key: patientEmail
+    value: ''
+  - key: patientPassword
+    value: ''
+  - key: patientToken
+    value: ''
+  - key: adminToken
+    value: ''
+  - key: adminId
+    value: ''

@@ -1,0 +1,26 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patientToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query One($id: String!) { getNotice(noticeId: $id) { _id noticeCategory noticeStatus noticePinned noticeTitle noticeViews publishedAt displayTitle displayContent displayLang } }
+    variables: |-
+      { "id": "{{noticeAId}}" }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const n = gql.getNotice || {};
+      pm.test('RU, 1 view', () => pm.expect([n.displayLang, n.noticeViews]).to.eql(['RU', 1]));
+    language: text/javascript
+order: 22000

@@ -1,0 +1,37 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{adminToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query GetClinicsByAdmin($input: AdminClinicsInquiry!) {
+        getClinicsByAdmin(input: $input) {
+          list { _id clinicName clinicStatus submittedAt memberData { memberFullName memberEmail memberType } }
+          metaCounter { total }
+        }
+      }
+    variables: |-
+      {
+        "input": { "page": 1, "limit": 20, "clinicStatus": "PENDING", "text": "{{clinicName}}" }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const page = gql.getClinicsByAdmin || {};
+      const c = (page.list || [])[0] || {};
+      pm.test('found by name in the PENDING queue', () => pm.expect(c._id).to.eql(pm.environment.get('clinicId')));
+      pm.test('manager name and work email for the admin', () => pm.expect(c.memberData).to.eql({
+        memberFullName: 'Kim Ji-won', memberEmail: pm.environment.get('clinicEmail'), memberType: 'AGENT',
+      }));
+    language: text/javascript
+order: 22000

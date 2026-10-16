@@ -1,0 +1,3 @@
+$kind: collection
+description: Help center. Notices and FAQ written by the team in English with hand-entered translations — drafts (HOLD) are not public, the first publication is dated once, pinned notices come first, a reader gets their memberLang (or a guest's lang) and English otherwise, FAQ filtered by tab. 1:1 inquiries — only the patient's own booking can be attached, a patient sees only their own tickets, the team's answer and the patient's follow-up move the status (NEW → ANSWERED → IN_PROGRESS → ANSWERED → RESOLVED), resolved is final, the thread is capped at 50 messages. Self-contained; removes its notices at the end. Needs ADMIN_EMAIL / ADMIN_PASSWORD and MEDICAL_ENC_KEY in .env.
+order: 11000

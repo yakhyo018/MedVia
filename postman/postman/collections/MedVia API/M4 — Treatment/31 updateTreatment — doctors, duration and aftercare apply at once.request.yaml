@@ -1,0 +1,31 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation UpdateTreatment($input: TreatmentUpdate!) {
+        updateTreatment(input: $input) { _id treatmentStatus treatmentName treatmentPrice treatmentDuration treatmentDesc treatmentReviewNote doctorIds doctors { _id } treatmentDraft { treatmentPrice treatmentDesc treatmentName submittedAt } }
+      }
+    variables: |-
+      {
+        "input": { "treatmentId": "{{treatmentId}}", "doctorIds": ["{{doctorAId}}"], "treatmentDuration": 40, "treatmentAftercare": "Use SPF 50 for 10 days." }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const t = gql.updateTreatment || {};
+      pm.test('applied live', () => pm.expect([t.treatmentDuration, t.doctorIds]).to.eql([40, [pm.environment.get('doctorAId')]]));
+      pm.test('no draft for operational fields', () => pm.expect(t.treatmentDraft).to.be.null);
+    language: text/javascript
+order: 31000

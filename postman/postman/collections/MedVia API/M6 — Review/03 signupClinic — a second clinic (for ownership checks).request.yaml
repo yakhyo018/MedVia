@@ -1,0 +1,30 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation SignupClinic($input: ClinicSignupInput!) { signupClinic(input: $input) { _id accessToken } }
+    variables: |-
+      {
+        "input": {
+          "memberEmail": "rclinic2.{{stamp}}@medvia.test", "memberPassword": "Clinic#2026", "memberFullName": "Park Min-su",
+          "clinicName": "Other Review Clinic {{stamp}}", "clinicSpecialty": "DENTAL", "clinicDistrict": "MAPO",
+          "clinicAddress": "5 Yanghwa-ro, Mapo-gu, Seoul", "termsAccepted": true, "authorizedConfirmed": true
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.environment.set('otherClinicToken', (gql.signupClinic || {}).accessToken || '');
+    language: text/javascript
+order: 3000

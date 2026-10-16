@@ -1,0 +1,36 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{patient2Token}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation AM($input: InquiryMessageInput!) { addInquiryMessage(input: $input) { _id inquiryStatus inquiryLang inquiryReplyLang bookingId resolvedAt patientName bookingCode inquiryMessages { senderType text } } }
+    variables: |-
+      { "input": { "inquiryId": "{{inquiry2Id}}", "text": "Message number {{fillCount}}", "lang": "UZ" } }
+scripts:
+  - type: beforeRequest
+    code: |-
+      if (!pm.environment.get('fillCount')) pm.environment.set('fillCount', '1');
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      const n = Number(pm.environment.get('fillCount') || 1);
+      if (!body.errors && n < 50) {
+        pm.environment.set('fillCount', String(n + 1));
+        if (pm.execution && pm.execution.setNextRequest) pm.execution.setNextRequest(pm.info.requestName);
+        else postman.setNextRequest(pm.info.requestName);
+      } else {
+        pm.environment.unset('fillCount');
+        pm.test('50 messages stored', () => pm.expect([body.errors, (((gql.addInquiryMessage || {}).inquiryMessages) || []).length]).to.eql([undefined, 50]));
+      }
+    language: text/javascript
+order: 44000

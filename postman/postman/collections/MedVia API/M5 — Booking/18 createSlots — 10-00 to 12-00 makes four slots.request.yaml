@@ -1,0 +1,26 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{clinicToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation C($input: SlotsCreateInput!) { createSlots(input: $input) { created planned } }
+    variables: |-
+      { "input": { "doctorId": "{{doctorAId}}", "dateFrom": "{{slotDate}}", "dateTo": "{{slotDate}}", "timeFrom": "10:00", "timeTo": "12:00" } }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = pm.response.json();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+      const code = (err.extensions && err.extensions.code) || '';
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      const r = gql.createSlots || {};
+      pm.test('4 planned, 4 created', () => pm.expect(r).to.eql({ created: 4, planned: 4 }));
+    language: text/javascript
+order: 18000

@@ -1,0 +1,3 @@
+$kind: collection
+description: "The bell. Every event that rings it, each heard by the right member only: a booking request (the clinic), confirm / completed → \"how was your visit?\" (the patient), a chat message (the other side — one unread line per room with a count, read when the room is read, silenced by memberNotify.chatMessages), a new follower, a comment or a doctor's answer on one's post (never one's own), the team's answer to an inquiry. Then the badge and mark-read — one, all, and never another member's. Self-contained. Needs ADMIN_EMAIL / ADMIN_PASSWORD, MEDICAL_ENC_KEY and ENABLE_TEST_SUPPORT=true in .env."
+order: 12000

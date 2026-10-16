@@ -1,0 +1,13 @@
+$kind: http-request
+url: '{{batchUrl}}/dev/run/RECOUNT'
+method: POST
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();
+      pm.test('status 201', () => pm.response.to.have.status(201));
+      pm.test('RECOUNT SUCCESS', () => pm.expect([body.batchName, body.batchStatus], body.batchResult).to.eql(['RECOUNT', 'SUCCESS']));
+      pm.test('logged with start and finish', () => pm.expect([!!body._id, !!body.startedAt, !!body.finishedAt]).to.eql([true, true, true]));
+      pm.test('names the drifted fields', () => pm.expect(body.batchResult).to.include('clinicFollowers').and.include('clinicMinPrice'));
+    language: text/javascript
+order: 75000
