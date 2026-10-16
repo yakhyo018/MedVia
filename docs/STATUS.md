@@ -13,7 +13,7 @@ Now the production release (frontend F9): `feature/seed-variety` (below) is read
   batch on `node:22.20.0` with the repository mounted; ports on 127.0.0.1; the batch waits for
   the API's healthcheck) and `deploy.sh` (reset → checkout main → pull →
   `up -d --force-recreate medvia-api medvia-batch`). Local Redis: `docker compose up -d medvia-redis`
-  (the service was `redis`). `Dockerfile` / `.dockerignore` are no longer used.
+  (the service was `redis`). `Dockerfile` / `.dockerignore` removed.
 
 ## Health-tip photos (2026-10-16, branch `feature/article-images`)
 
