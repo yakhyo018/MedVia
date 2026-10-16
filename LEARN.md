@@ -2555,3 +2555,58 @@ On the server, append-only. A client-held history can be forged (fake assistant 
 **5. How did you choose a model?**
 
 By measurement: an eval of twelve single-step decisions graded by code — tool choice, valid arguments, grounding, injection resistance, language — run over the free candidates. The model is configuration, not code.
+
+## Seed variety — a demo that looks like real places (2026-10-15)
+
+**Problem.** The demo data was templated (15 clinics, 8 shared photos, one description pattern,
+the same hours, doctors without photos) — and several clinic names belonged to real Seoul
+clinics, which the site would show with invented ratings.
+
+- **Hand-written data** (`seed/seed-data.ts`): 8 clinics, each with a description, its own
+  opening hours and three doctors (name, gender, experience, bio, earlier post). Slots are built
+  from each clinic's hours, so a 07:00 check-up centre gets 07:00 slots and a closed Sunday none.
+- **Name check:** every name searched in Korean; collisions renamed.
+- **Generated photos (2026-10-16):** `npm run photos:generate` — FLUX.1 Krea [dev] through
+  Hugging Face Inference Providers: `POST https://router.huggingface.co/fal-ai/fal-ai/flux/krea`
+  with the HF token, JSON `{ prompt, image_size, seed, sync_mode }` in, `images[0].url` (a data
+  URI) out. The router bills the HF account, so one token covers every provider. Prompts are built
+  from `seed-data.ts` (each clinic's look and specialty room; each doctor's gender and age); every
+  file's prompt goes to `manifest.json` / `SOURCES.md`, and a slot is redone only when its prompt
+  changes (or `--force`). fal's safety checker answers a false positive with a black image and
+  `has_nsfw_concepts: [true]` — the script retries with the next seed instead of saving it.
+  `photos:attach -- --replace` brings new files into existing records.
+
+### Interview questions
+
+1. **Why generated portraits instead of stock photos?** A stock model is a real person who would
+   appear as a fictional doctor with ratings and reviews; a generated face belongs to nobody. Each
+   file's prompt is recorded, so the set can be rebuilt or extended.
+2. **How do you make a paid, flaky batch job safe to rerun?** Idempotent slots (skip a file whose
+   prompt is unchanged), a fixed seed per file, stop at the first hard error, retry only the known
+   soft one (the safety checker's black frame).
+3. **Why no people in the clinic photos?** A person in a clinic photo reads as its staff or
+   patient; the doctor portraits are separate and the site says the data is fictional.
+4. **Why attach photos instead of reseeding?** Reseeding changes every id; in production that
+   would break bookings, reviews and links. Updating the two fields keeps everything else.
+
+## Health-tip photos — one field, one rule (2026-10-16)
+
+**Problem.** Health tips had no picture although the mockups show one on every tip card; the
+article API stored text only.
+
+- **Extend, don't fork.** `articleImages` joins `BoardArticle` and its inputs; `createArticle`
+  and `updateArticle` already pass input fields through, so the service only gained a check.
+- **Validation at two layers.** The DTO limits the shape (array, ≤ 2, unique, our own
+  `uploads/article/…` paths — no outside URLs, no `javascript:`); `checkArticleImages` (a pure
+  rule, unit-tested) decides *where* photos are allowed. On update the board comes from the
+  stored post, since the input cannot change it.
+- **Upload target per role.** `/upload/image?target=article` only for those who may write tips.
+
+### Interview questions
+
+1. **Why not a new module for doctor articles?** The behaviour (lists, likes, views, reports,
+   moderation) is identical; a second module would duplicate it. A field plus a rule is enough.
+2. **Why validate paths, not just "is a string"?** A stored URL is rendered as `<img src>` for
+   everyone; only paths our uploader produced are safe and served by us.
+3. **Why does update read the post first?** The rule depends on the board, which is not in the
+   update input — trusting the client for it would let a question gain photos.

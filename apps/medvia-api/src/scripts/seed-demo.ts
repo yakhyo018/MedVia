@@ -1,12 +1,13 @@
 /**
- * A small demo database that looks alive: 15 Seoul clinics, 40 doctors, 50 patients from Russia,
+ * A small demo database that looks alive: 8 Seoul clinics, 24 doctors, 50 patients from Russia,
  * Uzbekistan and Kazakhstan, two weeks of open slots, ~150 bookings in every status, verified
  * reviews, community posts, notices and FAQ.
  *
  *   npm run seed:demo              refuses if the demo data already exists
  *   npm run seed:demo -- --reset   removes the demo data (and only it), then seeds again
  *
- * Never in production. Every account is <name>@seed.medvia.test with SEED_PASSWORD from .env;
+ * Never in a real production: only with DEMO_MODE=true (the portfolio site, synthetic data only,
+ * SEED_PASSWORD of 16+ characters). Every account is <name>@seed.medvia.test with SEED_PASSWORD;
  * the demo logins are feride@seed.medvia.test (patient), clinic01@seed.medvia.test (clinic),
  * doctor01@seed.medvia.test (doctor) and admin@seed.medvia.test (admin).
  *
@@ -81,11 +82,13 @@ const HOUR = 60 * 60_000;
 const DAY = 24 * HOUR;
 const PAST_DAYS = 60;
 const FUTURE_DAYS = 14;
-/** 10:00 … 17:30, every 30 minutes. */
-const SLOT_TIMES = Array.from({ length: 16 }, (_, i) => 600 + i * 30);
+/** "09:30" → 570 (minutes after midnight). */
+const minutesOf = (clock: string) => Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3, 5));
 /**
- * Photos from the approved landing sample (MedVia-design/landing-with-photos): a clinic room and a
- * treatment per specialty. Every clinic gets its own copy of both, so `--reset` can delete them.
+ * Photos: generated files per clinic, doctor and health tip (seed/photos/clinics|doctors|articles/
+ * <slug>-<n>.jpg — `npm run photos:generate`, prompts in seed/photos/SOURCES.md). A clinic without own
+ * files falls back to the landing sample for its specialty, a doctor shows initials. Every record
+ * gets its own copy, so `--reset` can delete them.
  */
 const PHOTOS = path.join(__dirname, 'seed', 'photos');
 const SPECIALTY_PHOTOS: Record<string, [string, string]> = {
@@ -94,12 +97,33 @@ const SPECIALTY_PHOTOS: Record<string, [string, string]> = {
 	DENTAL: ['c_hanbit.jpg', 't_dental.jpg'],
 	CHECK_UP: ['c_namsan.jpg', 't_checkup.jpg'],
 };
-const UPLOADS = path.join(__dirname, '..', '..', '..', '..', 'uploads', 'clinic');
+const UPLOADS = path.join(__dirname, '..', '..', '..', '..', 'uploads');
 
-/** The size of the demo: 15 clinics, 40 doctors (3 at the first ten clinics, 2 at the rest), 50 patients. */
-const DEMO_CLINICS = CLINICS.slice(0, 15);
-const DOCTOR_CLINIC = DEMO_CLINICS.flatMap((_, i) => Array<number>(i < 10 ? 3 : 2).fill(i));
+/** The size of the demo: 8 clinics, 3 doctors each, 50 patients. */
+const DEMO_CLINICS = CLINICS;
+const DEMO_DOCTORS = CLINICS.flatMap((clinic, i) =>
+	clinic.doctors.map((doctor) => ({ ...doctor, clinic: i })),
+);
 const PATIENTS = 50;
+
+/** A clinic's (or a doctor's) own photos, in order (<slug>-1.jpg, <slug>-2.jpg …). */
+const ownPhotos = (folder: string, slug: string): string[] => {
+	const dir = path.join(PHOTOS, folder);
+	if (!fs.existsSync(dir)) return [];
+	return fs
+		.readdirSync(dir)
+		.filter((file) => file.startsWith(`${slug}-`) && /\.(jpg|webp)$/.test(file))
+		.sort((a, b) => Number(a.match(/-(\d+)\./)?.[1]) - Number(b.match(/-(\d+)\./)?.[1]))
+		.map((file) => path.join(folder, file));
+};
+
+/** Copies a seed photo into uploads/<target>/ under a fresh name; returns the stored path. */
+const copyPhoto = (relative: string, target: 'clinic' | 'doctor' | 'article'): string => {
+	const stored = `uploads/${target}/${randomUUID()}${path.extname(relative)}`;
+	fs.mkdirSync(path.join(UPLOADS, target), { recursive: true });
+	fs.copyFileSync(path.join(PHOTOS, relative), path.join(UPLOADS, target, path.basename(stored)));
+	return stored;
+};
 
 const STATUS_PLAN: [BookingStatus, number, 'past' | 'future'][] = [
 	[BookingStatus.COMPLETED, 75, 'past'],
@@ -120,22 +144,41 @@ const SPECIALIST: Record<string, string> = {
 	CHECK_UP: 'Internal medicine specialist',
 };
 
-/** Now at this clinic, before that a residency and medical school — years follow the experience. */
-function careerOf(specialty: string, clinicName: string, experience: number): T[] {
+const CITIES = ['Seoul', 'Busan', 'Daegu', 'Incheon', 'Gwangju', 'Daejeon'];
+
+/**
+ * Now at this clinic; before that (for the senior ones) another post, a residency and medical
+ * school — years follow the experience. Generic places on purpose: a fictional doctor is never
+ * tied to a real university or hospital.
+ */
+function careerOf(specialty: string, clinicName: string, experience: number, before?: string): T[] {
 	const year = new Date().getFullYear();
 	const startedAt = year - experience;
-	const joined = year - faker.number.int({ min: 1, max: Math.max(1, Math.min(experience, 8)) });
+	const joined = year - faker.number.int({ min: 1, max: Math.max(1, Math.min(experience - 2, 7)) });
+	const [title, where] = (before ?? '').split(' at ');
+	// "a dental clinic, Busan" → "Dental clinic, Busan"
+	const place = where?.replace(/^an? /, '').replace(/^./, (c) => c.toUpperCase());
 	return [
 		{ title: SPECIALIST[specialty], place: clinicName, from: String(joined) },
+		...(before && joined > startedAt + 1
+			? [
+					{
+						title: place ? title : before,
+						place: place ?? '',
+						from: String(startedAt),
+						to: String(joined),
+					},
+				]
+			: []),
 		{
 			title: 'Residency',
-			place: 'University hospital, Seoul',
+			place: `University hospital, ${pick(CITIES)}`,
 			from: String(startedAt - 4),
 			to: String(startedAt),
 		},
 		{
 			title: 'M.D.',
-			place: 'Medical school, Seoul',
+			place: `Medical school, ${pick(CITIES)}`,
 			from: String(startedAt - 10),
 			to: String(startedAt - 4),
 		},
@@ -212,12 +255,8 @@ async function seed(m: Models, password: string): Promise<void> {
 			},
 		),
 	);
-	const doctorNames = Array.from({ length: DOCTOR_CLINIC.length }, (_, i) => [
-		KOREAN_SURNAMES[i % KOREAN_SURNAMES.length],
-		KOREAN_GIVEN[(i * 7) % KOREAN_GIVEN.length],
-	]);
-	const doctorAccounts = doctorNames.map(([sur, given], i) =>
-		account(`doctor${String(i + 1).padStart(2, '0')}`, MemberType.DOCTOR, `${sur[0]} ${given[0]}`, {
+	const doctorAccounts = DEMO_DOCTORS.map((doctor, i) =>
+		account(`doctor${String(i + 1).padStart(2, '0')}`, MemberType.DOCTOR, doctor.name, {
 			memberLang: Language.KO,
 			memberCountry: 'Korea',
 		}),
@@ -273,15 +312,13 @@ async function seed(m: Models, password: string): Promise<void> {
 	}
 	await insert(m.Member, [admin, ...clinicAccounts, ...doctorAccounts, ...patients], now);
 
-	/* clinics, with two real photos each (the room, then a treatment) */
-	fs.mkdirSync(UPLOADS, { recursive: true });
+	/* clinics: their own photos (or the specialty's two sample photos) */
 	const clinics: T[] = DEMO_CLINICS.map((c, i) => {
 		const [lat, lng] = DISTRICT_CENTRE[c.district];
-		const images = SPECIALTY_PHOTOS[c.specialty].map((file) => {
-			const image = `uploads/clinic/${randomUUID()}.jpg`;
-			fs.copyFileSync(path.join(PHOTOS, file), path.join(UPLOADS, path.basename(image)));
-			return image;
-		});
+		const own = ownPhotos('clinics', c.slug);
+		const images = (own.length ? own : SPECIALTY_PHOTOS[c.specialty]).map((file) =>
+			copyPhoto(file, 'clinic'),
+		);
 		const langs = [
 			Language.KO,
 			Language.EN,
@@ -304,12 +341,12 @@ async function seed(m: Models, password: string): Promise<void> {
 				],
 			},
 			clinicPhone: `02-${faker.number.int({ min: 2000, max: 9999 })}-${faker.number.int({ min: 1000, max: 9999 })}`,
-			// Monday to Saturday; Sunday closed — no slots on Sundays below.
-			clinicHours: [1, 2, 3, 4, 5, 6].map((day) => ({ day, open: '09:00', close: '19:00' })),
+			// Each clinic's own hours; slots below fall inside them.
+			clinicHours: c.hours,
 			clinicLangs: langs,
 			clinicInterpreterLangs: langs.filter((l) => l !== Language.KO && l !== Language.EN),
 			clinicImages: images,
-			clinicDesc: `${c.name} in ${c.district.charAt(0)}${c.district.slice(1).toLowerCase()}-gu. Interpreters for ${langs.slice(2).join(', ')}.`,
+			clinicDesc: c.desc,
 			clinicViews: faker.number.int({ min: 80, max: 2400 }),
 			memberId: clinicAccounts[i]._id,
 			submittedAt,
@@ -319,18 +356,22 @@ async function seed(m: Models, password: string): Promise<void> {
 	});
 	await insert(m.Clinic, clinics, now);
 
-	/* doctors: three at the first ten clinics, two at the rest */
+	/* doctors: three per clinic, each with their portrait */
 	const doctors: T[] = doctorAccounts.map((acc, i) => {
-		const clinic = clinics[DOCTOR_CLINIC[i]];
-		const experience = faker.number.int({ min: 4, max: 22 });
-		const [sur, given] = doctorNames[i];
+		const seedDoctor = DEMO_DOCTORS[i];
+		const clinic = clinics[seedDoctor.clinic];
+		const experience = seedDoctor.experience;
+		const portrait = ownPhotos('doctors', DEMO_CLINICS[seedDoctor.clinic].slug).find(
+			(file) => /-(\d+)\./.exec(file)?.[1] === String((i % 3) + 1),
+		);
 		return {
 			_id: id(),
 			doctorStatus: DoctorStatus.ACTIVE,
-			doctorName: `${sur[0]} ${given[0]}`,
-			doctorNameKo: `${sur[1]}${given[1]}`,
+			doctorName: seedDoctor.name,
+			doctorNameKo: seedDoctor.nameKo,
 			doctorSpecialty: clinic.clinicSpecialty,
 			doctorExperience: experience,
+			...(portrait ? { doctorImage: copyPhoto(portrait, 'doctor') } : {}),
 			// Korean and English, plus at least one of the clinic's patient languages (RU / UZ / KK):
 			// the doctors list filters by the patient's language, and a KO/EN-only demo finds nobody.
 			doctorLangs: [
@@ -341,9 +382,13 @@ async function seed(m: Models, password: string): Promise<void> {
 					max: 2,
 				}),
 			],
-			doctorBio: `Board-certified in ${clinic.clinicSpecialty.toLowerCase().replace('_', ' ')}.`,
-			// Generic places on purpose: fictional doctors are never tied to a real university or hospital.
-			doctorCareer: careerOf(clinic.clinicSpecialty, clinic.clinicName, experience),
+			doctorBio: seedDoctor.bio,
+			doctorCareer: careerOf(
+				clinic.clinicSpecialty,
+				clinic.clinicName,
+				experience,
+				seedDoctor.before,
+			),
 			doctorViews: faker.number.int({ min: 30, max: 900 }),
 			clinicId: clinic._id,
 			memberId: acc._id,
@@ -383,7 +428,20 @@ async function seed(m: Models, password: string): Promise<void> {
 	const today = seoulDateOf(now);
 	const seoulDay = (offset: number) =>
 		seoulDateOf(new Date(Date.parse(`${today}T03:00:00Z`) + offset * DAY));
-	const openOn = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay() !== 0;
+	/** A doctor's 30-minute starts on a day: inside the clinic's hours (none when it is closed). */
+	const clinicOfDoctor = new Map(
+		doctors.map((d) => [String(d._id), clinics.find((c) => c._id === d.clinicId)]),
+	);
+	const timesOn = (doctorId: Types.ObjectId, date: string): number[] => {
+		const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+		const hours = (clinicOfDoctor.get(String(doctorId))?.clinicHours as T[] | undefined)?.find(
+			(h) => h.day === weekday,
+		);
+		if (!hours) return [];
+		const times: number[] = [];
+		for (let t = minutesOf(hours.open); t + 30 <= minutesOf(hours.close); t += 30) times.push(t);
+		return times;
+	};
 	const taken = new Set<string>(); // doctorId|start
 	const slots: T[] = [];
 	const bookings: T[] = [];
@@ -397,11 +455,10 @@ async function seed(m: Models, password: string): Promise<void> {
 					? -faker.number.int({ min: 2, max: PAST_DAYS })
 					: faker.number.int({ min: 1, max: FUTURE_DAYS });
 			const date = seoulDay(offset);
-			if (!openOn(date)) continue;
-			const first = faker.number.int({ min: 0, max: SLOT_TIMES.length - count });
-			const starts = SLOT_TIMES.slice(first, first + count).map((minutes) =>
-				seoulToUtc(date, minutes),
-			);
+			const times = timesOn(doctorId, date);
+			if (times.length < count) continue;
+			const first = faker.number.int({ min: 0, max: times.length - count });
+			const starts = times.slice(first, first + count).map((minutes) => seoulToUtc(date, minutes));
 			if (starts.every((s) => !taken.has(`${doctorId}|${s.toISOString()}`))) {
 				starts.forEach((s) => taken.add(`${doctorId}|${s.toISOString()}`));
 				return starts;
@@ -563,8 +620,7 @@ async function seed(m: Models, password: string): Promise<void> {
 	for (const doctor of doctors) {
 		for (let offset = 1; offset <= FUTURE_DAYS; offset++) {
 			const date = seoulDay(offset);
-			if (!openOn(date)) continue;
-			for (const minutes of SLOT_TIMES) {
+			for (const minutes of timesOn(doctor._id, date)) {
 				const slotStart = seoulToUtc(date, minutes);
 				if (taken.has(`${doctor._id}|${slotStart.toISOString()}`)) continue;
 				slots.push({
@@ -635,6 +691,7 @@ async function seed(m: Models, password: string): Promise<void> {
 		title: string,
 		content: string,
 		lang: Language,
+		images: string[] = [],
 	) => {
 		const createdAt = daysAgo(faker.number.int({ min: 1, max: 45 }));
 		const article: T = {
@@ -642,6 +699,7 @@ async function seed(m: Models, password: string): Promise<void> {
 			articleCategory: category,
 			articleTitle: title,
 			articleContent: content,
+			articleImages: images,
 			articleLang: lang,
 			articleViews: faker.number.int({ min: 20, max: 450 }),
 			memberId: author._id,
@@ -688,6 +746,7 @@ async function seed(m: Models, password: string): Promise<void> {
 			post.lang,
 		);
 	}
+	/* health tips carry their photos (seed/photos/articles/<slug>-<n>.jpg), like a doctor's upload */
 	for (const tip of HEALTH_TIPS)
 		addArticle(
 			BoardArticleCategory.HEALTH_TIP,
@@ -695,6 +754,7 @@ async function seed(m: Models, password: string): Promise<void> {
 			tip.title,
 			tip.content,
 			Language.EN,
+			ownPhotos('articles', tip.slug).map((file) => copyPhoto(file, 'article')),
 		);
 	for (const article of articles)
 		article.articleComments = comments.filter((c) => c.articleId === article._id).length;
@@ -805,13 +865,20 @@ async function seed(m: Models, password: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-	if (process.env.NODE_ENV === 'production') throw new Error('seed:demo never runs in production.');
+	// Production only as the demo site (DEMO_MODE=true): synthetic data in MONGO_PROD.
+	const production = process.env.NODE_ENV === 'production';
+	if (production && process.env.DEMO_MODE !== 'true')
+		throw new Error(
+			'seed:demo runs in production only with DEMO_MODE=true (a demo-data-only site).',
+		);
 	const password = process.env.SEED_PASSWORD;
-	if (!password || password.length < 8)
-		throw new Error('Set SEED_PASSWORD (at least 8 characters) in .env first.');
-	if (!process.env.MONGO_DEV) throw new Error('No MONGO_DEV in .env.');
+	const minimum = production ? 16 : 8;
+	if (!password || password.length < minimum)
+		throw new Error(`Set SEED_PASSWORD (at least ${minimum} characters) in .env first.`);
+	const uri = production ? process.env.MONGO_PROD : process.env.MONGO_DEV;
+	if (!uri) throw new Error(`No ${production ? 'MONGO_PROD' : 'MONGO_DEV'} in .env.`);
 
-	await mongoose.connect(process.env.MONGO_DEV);
+	await mongoose.connect(uri);
 	const m = models();
 	const exists = await m.Member.exists({ memberEmail: `admin${DOMAIN}` });
 	if (process.argv.includes('--reset')) await reset(m);

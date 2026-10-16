@@ -3,10 +3,52 @@
 Where the project stands, what comes next, and how we work. A new session reads this first.
 Update it whenever a milestone closes.
 
-_Last updated: 2026-10-13 — every planned backend milestone is done; small additions for the
-frontend's F1 since: `getTrendingTreatments`, `getClinics` `search.treatment`, seed photos and
-doctor careers, `clean:test`, the slimmed Postman suite. Next: whatever the frontend's F1 / F2
-needs; then the production release._
+_Last updated: 2026-10-15 — every planned backend milestone is done; frontend F0–F8 are done.
+Now the production release (frontend F9): `feature/seed-variety` (below) is ready, then a
+`DEMO_MODE` for production, Docker Compose files and the server (`medvia.tech`)._
+
+## Deploy files (2026-10-16)
+
+- `deploy/` removed by the user. Now `docker-compose.yml` (production, nestar style: Redis, API,
+  batch on `node:22.20.0` with the repository mounted; ports on 127.0.0.1; the batch waits for
+  the API's healthcheck) and `deploy.sh` (reset → checkout main → pull →
+  `up -d --force-recreate medvia-api medvia-batch`). Local Redis: `docker compose up -d medvia-redis`
+  (the service was `redis`). `Dockerfile` / `.dockerignore` removed.
+
+## Health-tip photos (2026-10-16, branch `feature/article-images`)
+
+- The user's request: the existing article API, no new module — `articleImages` (0–2 paths, the
+  first is the cover) on `BoardArticle`, in `ArticleInput` / `ArticleUpdate` (`ArrayMaxSize(2)`,
+  `ArrayUnique`, `ARTICLE_IMAGE_PATTERN` = `uploads/article/<uuid>.jpg|png` only).
+- **Health tips only:** `checkArticleImages` in `community.rules.ts` refuses photos on Q&A and the
+  free board (`ARTICLE_IMAGES_NOT_ALLOWED`) — other people's before/after pictures cannot be
+  checked; the update checks the post's own board. Upload target `article`: DOCTOR and ADMIN.
+- Seed: `HEALTH_TIPS` got slugs; 7 generated still lifes (`seed/photos/articles/`, two tips with
+  two photos); `seed:demo` copies them, `photos:attach` brings them into existing tips, the wipe
+  deletes the copies.
+- Checked: Jest 247 (new: rules + `ArticleInput` validation), and on the local API: a doctor
+  uploads and posts a tip with a photo, 3 photos refused, `[]` clears, a patient's upload is 403,
+  a question with a photo is refused. Postman not extended.
+
+## Seed variety (2026-10-15, branch `feature/seed-variety`)
+
+- **8 clinics × 3 doctors, 50 patients** (the user's choice; was 15 / 40 / 50). Two clinics per
+  specialty, each with its own description, opening hours (Sunday, late Thursday, half-day
+  Saturday, 07:00 check-ups) — slots fall inside them — and three hand-written doctors (name,
+  gender, experience, bio, earlier post; generic places, never a real hospital).
+- **Names checked on 2026-10-15** (Korean web search): the old ones collided with real clinics —
+  한빛치과 (Seocho), 잠실가족치과, 이태원 글로벌치과 (with its director's name), Myeongdong Skin Lab,
+  압구정라인의원 (Ansan). The new eight match no real clinic; Seoul Glow, Namsan and the tests'
+  names were clean and kept.
+- **Photos** (`seed/photos/clinics|doctors/<slug>-<n>.jpg`, prompts in `seed/photos/SOURCES.md`):
+  **generated** (2026-10-16, the user's decision after adding $5 of Hugging Face credits; this
+  replaces the stock photos of 2026-10-15) — `npm run photos:generate`, FLUX.1 Krea [dev] through
+  HF Inference Providers (fal-ai), ~$0.04 an image. Clinics: 4 each (entrance, reception,
+  treatment room, consultation room; the clinic's own look, no people, no signs); doctors: a
+  studio portrait matching gender and age, 8 women of 24. `sips` shrinks them to web size on
+  macOS. fal's safety checker sometimes returns a black frame for an empty room: the script
+  retries with the next seed. `photos:attach -- --replace` swaps the photos of existing records.
+- Dev DB reseeded; `clean:test` removed the old test accounts (also the F5 test clinic).
 
 ## getTrendingTreatments (2026-10-13)
 
@@ -20,7 +62,7 @@ needs; then the production release._
   State-building mutations were kept, refused requests and repeat queries removed; a few
   assertions were re-counted (M8a one report, M8c 6 unread / 5 marked). Full run green with the
   batch running; socket 17/17; Jest untouched (239).
-- **Dev DB:** demo seed = 15 clinics, 40 doctors (3 at ten clinics, 2 at five), 50 patients,
+- **Dev DB:** demo seed = 8 clinics, 24 doctors (3 each; since 2026-10-15), 50 patients,
   ~150 bookings, 69 reviews. Test leftovers (accounts, test notices, orphan audit rows, old batch
   logs) are removed by `npm run clean:test -- --yes`, which `test:api` runs after every run.
   One manual account remains: `ali@gmail.com` (left untouched).

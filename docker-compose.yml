@@ -1,15 +1,78 @@
-# Local Redis only. MongoDB lives in Atlas, so it is not a service here.
-# Without Docker:  brew install redis && brew services start redis
+# PRODUCTION (medvia.tech): `./deploy.sh` pulls main and recreates the two app containers.
+# The repository is mounted, so .env and uploads/ on the server are used as they are.
+# MongoDB lives in Atlas, so it is not a service here.
+# Local development needs only Redis:  docker compose up -d medvia-redis
 services:
-  redis:
-    image: redis:7-alpine
+  medvia-redis:
     container_name: medvia-redis
+    restart: always
+    image: redis:7-alpine
     command: ['redis-server', '--appendonly', 'yes']
+    # Loopback only: Docker's published ports go around ufw.
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     volumes:
       - medvia-redis-data:/data
+    networks:
+      - monorepo-network
+
+  medvia-api:
+    container_name: medvia-api
+    restart: always
+    image: node:22.20.0
+    # The host's nginx proxies api.medvia.tech here (HTTPS ends at nginx).
+    ports:
+      - '127.0.0.1:3000:3000'
+    volumes:
+      - ./:/usr/src/medvia
+    working_dir: /usr/src/medvia
+    environment:
+      - REDIS_URL=redis://medvia-redis:6379
+    depends_on:
+      - medvia-redis
+    networks:
+      - monorepo-network
+    # Healthy once GraphQL answers, i.e. after install + build: the batch waits for it.
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'curl -sf -H "content-type: application/json" -d "{\"query\":\"{__typename}\"}" http://localhost:3000/graphql',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 600s
+
+    # FOR PRODUCTION
+    command: bash -c "npm ci && npm run build && npm run start:prod"
+
+  medvia-batch:
+    container_name: medvia-batch
+    # Back after a crash or a server reboot, but a batch stopped by hand
+    # (`docker compose stop medvia-batch`, e.g. to pause the cron jobs) stays stopped.
     restart: unless-stopped
+    image: node:22.20.0
+    # No port: nothing calls the batch from outside.
+    volumes:
+      - ./:/usr/src/medvia
+    working_dir: /usr/src/medvia
+    environment:
+      - REDIS_URL=redis://medvia-redis:6379
+    # Same folder as the API: it starts only after the API has installed and built (no second
+    # `npm ci` writing node_modules at the same time).
+    depends_on:
+      medvia-api:
+        condition: service_healthy
+    networks:
+      - monorepo-network
+
+    # FOR PRODUCTION
+    command: bash -c "npm run start:prod:batch"
+
+networks:
+  monorepo-network:
+    driver: bridge
 
 volumes:
   medvia-redis-data:

@@ -1,5 +1,8 @@
 import { Field, InputType, Int } from '@nestjs/graphql';
 import {
+	ArrayMaxSize,
+	ArrayUnique,
+	IsArray,
 	IsBoolean,
 	IsEnum,
 	IsIn,
@@ -7,6 +10,7 @@ import {
 	IsMongoId,
 	IsOptional,
 	Length,
+	Matches,
 	Max,
 	Min,
 	ValidateNested,
@@ -14,7 +18,7 @@ import {
 import { Type } from 'class-transformer';
 import { BoardArticleCategory, BoardArticleStatus } from '../../enums/board-article.enum';
 import { Direction, Language } from '../../enums/common.enum';
-import { availableArticleSorts } from '../../config';
+import { ARTICLE_IMAGE_PATTERN, ARTICLE_IMAGES_MAX, availableArticleSorts } from '../../config';
 
 /** "Write an article" / "Ask a question". Who may use which board is checked by the service. */
 @InputType()
@@ -34,9 +38,21 @@ export class ArticleInput {
 	@IsEnum(Language)
 	@Field(() => Language)
 	articleLang!: Language;
+
+	/** Health tips only (checked by the service): up to two of our own uploads, cover first. */
+	@IsOptional()
+	@IsArray()
+	@ArrayMaxSize(ARTICLE_IMAGES_MAX)
+	@ArrayUnique()
+	@Matches(ARTICLE_IMAGE_PATTERN, {
+		each: true,
+		message: 'articleImages must be paths returned by /upload/image?target=article',
+	})
+	@Field(() => [String], { nullable: true })
+	articleImages?: string[];
 }
 
-/** The author edits the words, never the board, the status or the counters. */
+/** The author edits the words and a tip's photos, never the board, the status or the counters. */
 @InputType()
 export class ArticleUpdate {
 	@IsMongoId()
@@ -57,6 +73,18 @@ export class ArticleUpdate {
 	@IsEnum(Language)
 	@Field(() => Language, { nullable: true })
 	articleLang?: Language;
+
+	/** The whole new set ([] removes every photo). */
+	@IsOptional()
+	@IsArray()
+	@ArrayMaxSize(ARTICLE_IMAGES_MAX)
+	@ArrayUnique()
+	@Matches(ARTICLE_IMAGE_PATTERN, {
+		each: true,
+		message: 'articleImages must be paths returned by /upload/image?target=article',
+	})
+	@Field(() => [String], { nullable: true })
+	articleImages?: string[];
 }
 
 @InputType()

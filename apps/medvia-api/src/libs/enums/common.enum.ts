@@ -71,6 +71,7 @@ export enum Messages {
 	MODERATION_NOT_ALLOWED = 'This decision is not possible for the review in its current status!',
 
 	CATEGORY_NOT_ALLOWED = 'You cannot write in this board!',
+	ARTICLE_IMAGES_NOT_ALLOWED = 'Only health tips can have photos!',
 	CANNOT_REPORT_OWN = 'You cannot report your own post or comment!',
 	ALREADY_REPORTED = 'You have already reported this!',
 

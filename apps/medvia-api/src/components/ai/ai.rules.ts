@@ -14,17 +14,21 @@ const MAX_SUMMARY = 1500;
 
 /**
  * The boot-time lock. Free OpenRouter endpoints may log prompts and the fake provider writes
- * nonsense, so production runs only on `anthropic`. Each provider also needs its own key.
- * Throws with a message that says what to fix — the app refuses to start.
+ * nonsense, so production runs only on `anthropic` — unless DEMO_MODE=true says this production
+ * holds synthetic demo data only (the portfolio site), where `openrouter` is allowed too. Each
+ * provider also needs its own key. Throws with a message that says what to fix — the app
+ * refuses to start.
  */
 export function checkProvider(env: T): ProviderName {
 	const name = (env.AI_PROVIDER || 'fake') as ProviderName;
 	if (!PROVIDER_NAMES.includes(name)) {
 		throw new Error(`AI_PROVIDER must be one of ${PROVIDER_NAMES.join(', ')}`);
 	}
-	if (env.NODE_ENV === 'production' && name !== 'anthropic') {
+	const demo = String(env.DEMO_MODE) === 'true';
+	if (env.NODE_ENV === 'production' && name !== 'anthropic' && !(demo && name === 'openrouter')) {
 		throw new Error(
-			`AI_PROVIDER=${name} is not allowed in production: patient text must not reach a demo provider`,
+			`AI_PROVIDER=${name} is not allowed in production: patient text must not reach a demo provider` +
+				(name === 'openrouter' ? ' (set DEMO_MODE=true for a demo-data-only site)' : ''),
 		);
 	}
 	if (name === 'openrouter' && !env.OPENROUTER_API_KEY)

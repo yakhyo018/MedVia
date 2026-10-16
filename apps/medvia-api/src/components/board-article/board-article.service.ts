@@ -8,7 +8,7 @@ import {
 	ArticlesInquiry,
 	ArticleUpdate,
 } from '../../libs/dto/board-article/board-article.input';
-import { BoardArticleStatus } from '../../libs/enums/board-article.enum';
+import { BoardArticleCategory, BoardArticleStatus } from '../../libs/enums/board-article.enum';
 import { Messages } from '../../libs/enums/common.enum';
 import { LikeGroup } from '../../libs/enums/like.enum';
 import { MemberType } from '../../libs/enums/member.enum';
@@ -17,7 +17,13 @@ import { AuthMember, T } from '../../libs/types/common';
 import { shapeIntoMongoObjectId } from '../../libs/config';
 import { LikeService } from '../like/like.service';
 import { ViewService } from '../view/view.service';
-import { articleMatch, articleSort, authorName, checkCanPost } from './community.rules';
+import {
+	articleMatch,
+	articleSort,
+	authorName,
+	checkArticleImages,
+	checkCanPost,
+} from './community.rules';
 
 /** The author's name and type, for "Feride K." and the doctor badge. */
 export const lookupAuthor: PipelineStage.FacetPipelineStage[] = [
@@ -67,24 +73,30 @@ export class BoardArticleService implements OnModuleInit {
 
 	public async createArticle(authMember: AuthMember, input: ArticleInput): Promise<BoardArticle> {
 		checkCanPost(authMember.memberType, input.articleCategory);
+		checkArticleImages(input.articleCategory, input.articleImages);
 		const created = await this.articleModel.create({ ...input, memberId: authMember._id });
 		return (await this.findWithAuthor({ _id: created._id }))!;
 	}
 
-	/** Only the words; a hidden post stays hidden — the author cannot edit their way out. */
+	/**
+	 * The words and a tip's photos; a hidden post stays hidden — the author cannot edit their way
+	 * out. Photos are checked against the board the post is on (the update cannot change it).
+	 */
 	public async updateArticle(authMember: AuthMember, input: ArticleUpdate): Promise<BoardArticle> {
 		const { articleId, ...fields } = input;
+		const own = {
+			_id: this.toObjectId(articleId),
+			memberId: authMember._id,
+			articleStatus: BoardArticleStatus.ACTIVE,
+		};
+		if (fields.articleImages?.length) {
+			const current = await this.articleModel.findOne(own, { articleCategory: 1 }).lean().exec();
+			if (!current) throw new NotFoundException(Messages.NO_DATA_FOUND);
+			checkArticleImages(current.articleCategory as BoardArticleCategory, fields.articleImages);
+		}
 		const set = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
 		const updated = await this.articleModel
-			.findOneAndUpdate(
-				{
-					_id: this.toObjectId(articleId),
-					memberId: authMember._id,
-					articleStatus: BoardArticleStatus.ACTIVE,
-				},
-				{ $set: set },
-				{ new: true, runValidators: true },
-			)
+			.findOneAndUpdate(own, { $set: set }, { new: true, runValidators: true })
 			.lean()
 			.exec();
 		if (!updated) throw new NotFoundException(Messages.NO_DATA_FOUND);

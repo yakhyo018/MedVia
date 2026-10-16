@@ -28,6 +28,10 @@ export const availableClinicSorts = [
 /** Paths our own uploader returns. Anything else — an outside URL, `javascript:` — is refused. */
 export const UPLOADED_IMAGE_PATTERN = /^uploads\/[a-z]+\/[0-9a-f-]{36}\.(jpg|png)$/;
 
+/** A health tip's photos: our uploads in the article folder only, at most two. */
+export const ARTICLE_IMAGE_PATTERN = /^uploads\/article\/[0-9a-f-]{36}\.(jpg|png)$/;
+export const ARTICLE_IMAGES_MAX = 2;
+
 /** GraphQL hands ids over as strings; Mongo compares ObjectIds. */
 export const shapeIntoMongoObjectId = (target: any) => {
 	return typeof target === 'string' ? new Types.ObjectId(target) : target;

@@ -7,6 +7,7 @@ import {
 	articleMatch,
 	articleSort,
 	authorName,
+	checkArticleImages,
 	checkCanPost,
 	checkCanReport,
 	POSTERS,
@@ -31,6 +32,20 @@ describe('who posts where', () => {
 			}
 		// 3 boards × 4 member types, 4 allowed.
 		expect(refused).toBe(8);
+	});
+
+	it('lets only health tips carry photos', () => {
+		const photos = ['uploads/article/0b8f9c2e-6a3d-4c1e-9f7a-2d5e8b1c4a90.jpg'];
+		expect(() => checkArticleImages(BoardArticleCategory.HEALTH_TIP, photos)).not.toThrow();
+		expect(() => checkArticleImages(BoardArticleCategory.QNA, photos)).toThrow(
+			Messages.ARTICLE_IMAGES_NOT_ALLOWED,
+		);
+		expect(() => checkArticleImages(BoardArticleCategory.FREE, photos)).toThrow(
+			Messages.ARTICLE_IMAGES_NOT_ALLOWED,
+		);
+		// No photos (or an empty set) is fine anywhere.
+		expect(() => checkArticleImages(BoardArticleCategory.QNA, [])).not.toThrow();
+		expect(() => checkArticleImages(BoardArticleCategory.FREE)).not.toThrow();
 	});
 
 	it('only a doctor commenting on a question answers it', () => {
