@@ -96,13 +96,22 @@ In a browser: sign up / log in (the refresh cookie survives a reload), a clinic 
 photos, a booking request, chat between `feride@` and `clinic01@`, the assistant, `/_admin`, a
 phone.
 
-## 7. Updates
+## 7. Updates — `deploy.sh`
+
+After a merge to `main` in either repository:
 
 ```bash
-cd /opt/medvia/MedVia && git pull && cd ../MedVia-next && git pull
-cd ../MedVia/deploy && docker compose -f docker-compose.prod.yml up -d --build
-docker image prune -f                           # old layers fill the 50 GB disk otherwise
+/opt/medvia/MedVia/deploy/deploy.sh             # main
+/opt/medvia/MedVia/deploy/deploy.sh develop     # another branch, e.g. a check before merging
 ```
+
+What it does: both repositories `fetch` → `reset --hard` → `checkout -B <branch> origin/<branch>`
+(the server runs only what is in git; `.env`, `deploy/.env` and the volumes are untracked and
+stay), `docker compose up -d --build --remove-orphans` (only changed images rebuild, only their
+containers restart), waits up to 60 s for the API (`{__typename}`) and the web app to answer from
+inside their containers — otherwise prints their last log lines and exits 1 — then
+`docker image prune -f` (old layers fill the 50 GB disk otherwise). The script runs inside a
+`main()` function, so a `git reset` that changes `deploy.sh` itself cannot break the running copy.
 
 ## 8. New seed photos later
 
