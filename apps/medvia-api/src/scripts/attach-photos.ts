@@ -2,7 +2,8 @@
  * Brings photos made after the seed into the database without seeding again (ids, bookings and
  * reviews stay): a seed doctor without a `doctorImage` gets their portrait from
  * seed/photos/doctors, and a seed clinic with fewer photos than seed/photos/clinics now holds
- * gets the full, ordered set (its old copies are deleted). Run after adding files there.
+ * gets the full, ordered set (its old copies are deleted), and a seed health tip without photos
+ * gets seed/photos/articles/<slug>-<n>.jpg. Run after adding files there.
  * With --replace every seed clinic and doctor gets the current files, whatever they had (after
  * `photos:generate --force` made new ones); the old copies are deleted.
  *
@@ -16,11 +17,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import mongoose from 'mongoose';
-import { CLINICS } from './seed/seed-data';
+import { CLINICS, HEALTH_TIPS } from './seed/seed-data';
 import { models, ROOT } from './seed/accounts';
 
 const PORTRAITS = path.join(__dirname, 'seed', 'photos', 'doctors');
 const CLINIC_PHOTOS = path.join(__dirname, 'seed', 'photos', 'clinics');
+const ARTICLE_PHOTOS = path.join(__dirname, 'seed', 'photos', 'articles');
+
+/** <slug>-1.jpg, <slug>-2.jpg … of one folder, in order. */
+const ownFiles = (dir: string, slug: string): string[] =>
+	fs.existsSync(dir)
+		? fs
+				.readdirSync(dir)
+				.filter((file) => file.startsWith(`${slug}-`) && /\.(jpg|webp)$/.test(file))
+				.sort((a, b) => Number(/-(\d+)\./.exec(a)?.[1]) - Number(/-(\d+)\./.exec(b)?.[1]))
+		: [];
 
 async function main(): Promise<void> {
 	const uri =
@@ -77,7 +88,27 @@ async function main(): Promise<void> {
 			console.log(`${seedDoctor.name} ← ${path.basename(file)}`);
 		}
 	}
-	console.log(`${attached} clinics / doctors updated.`);
+	for (const tip of HEALTH_TIPS) {
+		const files = ownFiles(ARTICLE_PHOTOS, tip.slug);
+		if (!files.length) continue;
+		const article = await m.BoardArticle.findOne({
+			articleCategory: 'HEALTH_TIP',
+			articleTitle: tip.title,
+			...(replace ? {} : { 'articleImages.0': { $exists: false } }),
+		});
+		if (!article) continue;
+		fs.mkdirSync(path.join(ROOT, 'uploads', 'article'), { recursive: true });
+		const images = files.map((file) => {
+			const stored = `uploads/article/${randomUUID()}${path.extname(file)}`;
+			fs.copyFileSync(path.join(ARTICLE_PHOTOS, file), path.join(ROOT, stored));
+			return stored;
+		});
+		await m.BoardArticle.updateOne({ _id: article._id }, { $set: { articleImages: images } });
+		for (const old of article.articleImages ?? []) fs.rmSync(path.join(ROOT, old), { force: true });
+		attached++;
+		console.log(`${tip.title}: ${files.length} photos`);
+	}
+	console.log(`${attached} clinics / doctors / health tips updated.`);
 	await mongoose.disconnect();
 }
 

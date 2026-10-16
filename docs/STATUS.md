@@ -7,6 +7,21 @@ _Last updated: 2026-10-15 — every planned backend milestone is done; frontend 
 Now the production release (frontend F9): `feature/seed-variety` (below) is ready, then a
 `DEMO_MODE` for production, Docker Compose files and the server (`medvia.tech`)._
 
+## Health-tip photos (2026-10-16, branch `feature/article-images`)
+
+- The user's request: the existing article API, no new module — `articleImages` (0–2 paths, the
+  first is the cover) on `BoardArticle`, in `ArticleInput` / `ArticleUpdate` (`ArrayMaxSize(2)`,
+  `ArrayUnique`, `ARTICLE_IMAGE_PATTERN` = `uploads/article/<uuid>.jpg|png` only).
+- **Health tips only:** `checkArticleImages` in `community.rules.ts` refuses photos on Q&A and the
+  free board (`ARTICLE_IMAGES_NOT_ALLOWED`) — other people's before/after pictures cannot be
+  checked; the update checks the post's own board. Upload target `article`: DOCTOR and ADMIN.
+- Seed: `HEALTH_TIPS` got slugs; 7 generated still lifes (`seed/photos/articles/`, two tips with
+  two photos); `seed:demo` copies them, `photos:attach` brings them into existing tips, the wipe
+  deletes the copies.
+- Checked: Jest 247 (new: rules + `ArticleInput` validation), and on the local API: a doctor
+  uploads and posts a tip with a photo, 3 photos refused, `[]` clears, a patient's upload is 403,
+  a question with a photo is refused. Postman not extended.
+
 ## Seed variety (2026-10-15, branch `feature/seed-variety`)
 
 - **8 clinics × 3 doctors, 50 patients** (the user's choice; was 15 / 40 / 50). Two clinics per

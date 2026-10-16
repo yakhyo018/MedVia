@@ -96,9 +96,11 @@ export async function planAccountRemoval(m: Models, domain: string): Promise<Rem
 		{ _id: 1, doctorImage: 1 },
 	).lean();
 	const doctorIds = doctors.map((d) => d._id);
-	const articleIds = (
-		await m.BoardArticle.find({ memberId: { $in: memberIds } }, { _id: 1 }).lean()
-	).map((a) => a._id);
+	const articles = await m.BoardArticle.find(
+		{ memberId: { $in: memberIds } },
+		{ _id: 1, articleImages: 1 },
+	).lean();
+	const articleIds = articles.map((a) => a._id);
 	const bookingIds = (
 		await m.Booking.find(
 			{ $or: [{ clinicId: { $in: clinicIds } }, { memberId: { $in: memberIds } }] },
@@ -154,6 +156,7 @@ export async function planAccountRemoval(m: Models, domain: string): Promise<Rem
 	const images = [
 		...clinics.flatMap((c) => c.clinicImages ?? []),
 		...doctors.map((d) => d.doctorImage),
+		...articles.flatMap((a) => a.articleImages ?? []),
 		...members.map((x) => x.memberImage),
 	].filter(
 		(image): image is string =>

@@ -25,6 +25,16 @@ export function checkCanPost(memberType: MemberType, category: BoardArticleCateg
 	}
 }
 
+/**
+ * Photos belong to health tips only: a patient's question or free post with photos invites
+ * other people's before/after pictures, which the site cannot check.
+ */
+export function checkArticleImages(category: BoardArticleCategory, images?: string[]): void {
+	if (images?.length && category !== BoardArticleCategory.HEALTH_TIP) {
+		throw new BadRequestException(Messages.ARTICLE_IMAGES_NOT_ALLOWED);
+	}
+}
+
 /** A doctor's comment on a question is the answer that earns the "Doctor answered" badge. */
 export const answersQuestion = (category: BoardArticleCategory, commenter: MemberType) =>
 	category === BoardArticleCategory.QNA && commenter === MemberType.DOCTOR;

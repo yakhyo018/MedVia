@@ -5,7 +5,7 @@ import { Language } from '../libs/enums/common.enum';
 /**
  * A community post: a patient's question (QNA), a doctor's or the admin's health tip
  * (HEALTH_TIP), or a free-board post. Published at once; moderated after reports.
- * No images, no tags, no hard deletes (M8 review).
+ * Photos only on health tips (at most two); no tags, no hard deletes (M8 review).
  */
 const BoardArticleSchema = new Schema(
 	{
@@ -30,6 +30,12 @@ const BoardArticleSchema = new Schema(
 		articleContent: {
 			type: String,
 			required: true,
+		},
+
+		// HEALTH_TIP only, 0–2 paths from /upload/image?target=article; the first is the cover.
+		articleImages: {
+			type: [String],
+			default: [],
 		},
 
 		// The language it was written in — the doctors' Q&A list will translate from it.

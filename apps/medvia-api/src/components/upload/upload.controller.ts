@@ -29,6 +29,8 @@ const UPLOAD_TARGETS: Record<string, MemberType[]> = {
 	member: [MemberType.USER, MemberType.AGENT, MemberType.DOCTOR, MemberType.ADMIN],
 	clinic: [MemberType.AGENT],
 	doctor: [MemberType.DOCTOR],
+	// Health-tip photos: the members who may write tips (community.rules POSTERS).
+	article: [MemberType.DOCTOR, MemberType.ADMIN],
 };
 
 /** What multer hands over with memoryStorage. */

@@ -22,6 +22,10 @@ export class BoardArticle {
 	@Field(() => String)
 	articleContent!: string;
 
+	/** Health tips only; posts saved before photos existed have none (the field is missing). */
+	@Field(() => [String], { nullable: true })
+	articleImages?: string[];
+
 	@Field(() => Language)
 	articleLang!: Language;
 

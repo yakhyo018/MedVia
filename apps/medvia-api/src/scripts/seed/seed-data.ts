@@ -678,24 +678,30 @@ export const FREE_POSTS: { lang: Language; title: string; content: string }[] = 
 	},
 ];
 
-export const HEALTH_TIPS: { title: string; content: string }[] = [
+/** `slug`: file-name stem of the tip's photos (seed/photos/articles/<slug>-<n>.jpg). */
+export const HEALTH_TIPS: { slug: string; title: string; content: string }[] = [
 	{
+		slug: 'sun-protection',
 		title: 'Sun protection after laser treatment',
 		content: 'Use SPF 50 every two hours for two weeks after any laser session, even indoors.',
 	},
 	{
+		slug: 'check-up-fasting',
 		title: 'What to eat before a health check-up',
 		content: 'Fast for eight hours; water is fine. Bring a list of your medications.',
 	},
 	{
+		slug: 'filler-aftercare',
 		title: 'Filler aftercare in five steps',
 		content: 'No massage, no sauna and no alcohol for 48 hours.',
 	},
 	{
+		slug: 'scaling',
 		title: 'How often should you have scaling?',
 		content: 'Every six months for most adults; more often with gum disease.',
 	},
 	{
+		slug: 'melasma',
 		title: 'Melasma: why gentle is better',
 		content: 'Aggressive lasers can make melasma worse. Low-energy toning is the safer start.',
 	},

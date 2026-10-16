@@ -2,9 +2,10 @@
  * The demo's photos, made once and committed (seed:demo and photos:attach only copy them):
  *   seed/photos/clinics/<slug>-1..4.jpg   entrance, reception, treatment room, consultation room
  *   seed/photos/doctors/<slug>-1..3.jpg   a studio portrait of each of the clinic's three doctors
+ *   seed/photos/articles/<slug>-1..2.jpg  a health tip's photos (objects and rooms, no faces)
  *
  *   npm run photos:generate                          only the missing files
- *   npm run photos:generate -- --only=doctors        (or clinics)
+ *   npm run photos:generate -- --only=doctors        (or clinics, articles)
  *   npm run photos:generate -- --file=doctors/seoul-glow-1.jpg,clinics/seoul-glow-2.jpg   samples
  *   npm run photos:generate -- --force               every selected file again
  *
@@ -22,7 +23,7 @@ import { execFileSync } from 'child_process';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { CLINICS, SeedClinic } from './seed/seed-data';
+import { CLINICS, HEALTH_TIPS, SeedClinic } from './seed/seed-data';
 
 const MODEL = 'black-forest-labs/FLUX.1-Krea-dev';
 const ENDPOINT = 'https://router.huggingface.co/fal-ai/fal-ai/flux/krea';
@@ -176,6 +177,38 @@ const doctorJobs = (clinic: SeedClinic): Job[] =>
 		};
 	});
 
+/** A health tip's photos (at most two, as the API allows): still lifes, so no likeness at all. */
+const TIP_SCENES: Record<string, string[]> = {
+	'sun-protection': [
+		'a tube of SPF 50 sunscreen and a wide-brimmed straw hat on a white bathroom shelf in soft morning light',
+		'a hand applying a line of white sunscreen to the back of the other hand on a sunny balcony, close-up',
+	],
+	'check-up-fasting': [
+		'a glass of water and a small printed checklist beside an empty white plate on a kitchen table at dawn',
+	],
+	'filler-aftercare': [
+		'a cold gel pack wrapped in a soft white towel next to a small round mirror and a plain frosted glass pump bottle on a bedside table',
+	],
+	scaling: [
+		'two toothbrushes, a coil of dental floss and interdental brushes neatly arranged on a light teal surface, top view',
+		'a modern dental scaling instrument tray with a small mirror and a probe on a clean white tray in a bright clinic',
+	],
+	melasma: [
+		'minimalist matte white skincare bottles and a jar with blank smooth surfaces arranged on pale stone',
+	],
+};
+
+const articleJobs = (): Job[] =>
+	HEALTH_TIPS.flatMap((tip) =>
+		(TIP_SCENES[tip.slug] ?? []).map((scene, i) => ({
+			file: `articles/${tip.slug}-${i + 1}.jpg`,
+			prompt: `${scene}, soft natural light, realistic editorial still life photograph, plain unmarked packaging`,
+			width: 1152,
+			height: 864,
+			maxSide: 1200,
+		})),
+	);
+
 /** The same file always gets the same seeds: a rerun with --force reproduces it. */
 const seedOf = (file: string, attempt: number): number =>
 	createHash('sha256')
@@ -252,10 +285,13 @@ async function main(): Promise<void> {
 	const only = arg('only');
 	const file = arg('file');
 	const force = process.argv.includes('--force');
-	const jobs = CLINICS.flatMap((clinic) => [
-		...(only === 'doctors' ? [] : clinicJobs(clinic)),
-		...(only === 'clinics' ? [] : doctorJobs(clinic)),
-	]).filter((job) => !file || file.split(',').includes(job.file));
+	const jobs = [
+		...CLINICS.flatMap((clinic) => [
+			...(!only || only === 'clinics' ? clinicJobs(clinic) : []),
+			...(!only || only === 'doctors' ? doctorJobs(clinic) : []),
+		]),
+		...(!only || only === 'articles' ? articleJobs() : []),
+	].filter((job) => !file || file.split(',').includes(job.file));
 	if (file && !jobs.length) throw new Error(`No slot ${file}.`);
 	const manifest: Record<string, string> = fs.existsSync(MANIFEST)
 		? JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))

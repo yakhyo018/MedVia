@@ -2588,3 +2588,25 @@ clinics, which the site would show with invented ratings.
    patient; the doctor portraits are separate and the site says the data is fictional.
 4. **Why attach photos instead of reseeding?** Reseeding changes every id; in production that
    would break bookings, reviews and links. Updating the two fields keeps everything else.
+
+## Health-tip photos — one field, one rule (2026-10-16)
+
+**Problem.** Health tips had no picture although the mockups show one on every tip card; the
+article API stored text only.
+
+- **Extend, don't fork.** `articleImages` joins `BoardArticle` and its inputs; `createArticle`
+  and `updateArticle` already pass input fields through, so the service only gained a check.
+- **Validation at two layers.** The DTO limits the shape (array, ≤ 2, unique, our own
+  `uploads/article/…` paths — no outside URLs, no `javascript:`); `checkArticleImages` (a pure
+  rule, unit-tested) decides *where* photos are allowed. On update the board comes from the
+  stored post, since the input cannot change it.
+- **Upload target per role.** `/upload/image?target=article` only for those who may write tips.
+
+### Interview questions
+
+1. **Why not a new module for doctor articles?** The behaviour (lists, likes, views, reports,
+   moderation) is identical; a second module would duplicate it. A field plus a rule is enough.
+2. **Why validate paths, not just "is a string"?** A stored URL is rendered as `<img src>` for
+   everyone; only paths our uploader produced are safe and served by us.
+3. **Why does update read the post first?** The rule depends on the board, which is not in the
+   update input — trusting the client for it would let a question gain photos.

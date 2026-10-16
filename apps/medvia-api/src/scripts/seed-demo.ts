@@ -85,8 +85,8 @@ const FUTURE_DAYS = 14;
 /** "09:30" → 570 (minutes after midnight). */
 const minutesOf = (clock: string) => Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3, 5));
 /**
- * Photos: generated files per clinic and doctor (seed/photos/clinics/<slug>-<n>.jpg,
- * seed/photos/doctors/<slug>-<n>.jpg — `npm run photos:generate`, prompts in seed/photos/SOURCES.md). A clinic without own
+ * Photos: generated files per clinic, doctor and health tip (seed/photos/clinics|doctors|articles/
+ * <slug>-<n>.jpg — `npm run photos:generate`, prompts in seed/photos/SOURCES.md). A clinic without own
  * files falls back to the landing sample for its specialty, a doctor shows initials. Every record
  * gets its own copy, so `--reset` can delete them.
  */
@@ -118,7 +118,7 @@ const ownPhotos = (folder: string, slug: string): string[] => {
 };
 
 /** Copies a seed photo into uploads/<target>/ under a fresh name; returns the stored path. */
-const copyPhoto = (relative: string, target: 'clinic' | 'doctor'): string => {
+const copyPhoto = (relative: string, target: 'clinic' | 'doctor' | 'article'): string => {
 	const stored = `uploads/${target}/${randomUUID()}${path.extname(relative)}`;
 	fs.mkdirSync(path.join(UPLOADS, target), { recursive: true });
 	fs.copyFileSync(path.join(PHOTOS, relative), path.join(UPLOADS, target, path.basename(stored)));
@@ -691,6 +691,7 @@ async function seed(m: Models, password: string): Promise<void> {
 		title: string,
 		content: string,
 		lang: Language,
+		images: string[] = [],
 	) => {
 		const createdAt = daysAgo(faker.number.int({ min: 1, max: 45 }));
 		const article: T = {
@@ -698,6 +699,7 @@ async function seed(m: Models, password: string): Promise<void> {
 			articleCategory: category,
 			articleTitle: title,
 			articleContent: content,
+			articleImages: images,
 			articleLang: lang,
 			articleViews: faker.number.int({ min: 20, max: 450 }),
 			memberId: author._id,
@@ -744,6 +746,7 @@ async function seed(m: Models, password: string): Promise<void> {
 			post.lang,
 		);
 	}
+	/* health tips carry their photos (seed/photos/articles/<slug>-<n>.jpg), like a doctor's upload */
 	for (const tip of HEALTH_TIPS)
 		addArticle(
 			BoardArticleCategory.HEALTH_TIP,
@@ -751,6 +754,7 @@ async function seed(m: Models, password: string): Promise<void> {
 			tip.title,
 			tip.content,
 			Language.EN,
+			ownPhotos('articles', tip.slug).map((file) => copyPhoto(file, 'article')),
 		);
 	for (const article of articles)
 		article.articleComments = comments.filter((c) => c.articleId === article._id).length;
