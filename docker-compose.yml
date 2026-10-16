@@ -49,7 +49,9 @@ services:
 
   medvia-batch:
     container_name: medvia-batch
-    restart: always
+    # Back after a crash or a server reboot, but a batch stopped by hand
+    # (`docker compose stop medvia-batch`, e.g. to pause the cron jobs) stays stopped.
+    restart: unless-stopped
     image: node:22.20.0
     # No port: nothing calls the batch from outside.
     volumes:
