@@ -2566,15 +2566,25 @@ clinics, which the site would show with invented ratings.
   opening hours and three doctors (name, gender, experience, bio, earlier post). Slots are built
   from each clinic's hours, so a 07:00 check-up centre gets 07:00 slots and a closed Sunday none.
 - **Name check:** every name searched in Korean; collisions renamed.
-- **Licensed stock photos:** clinic interiors without people, signs or logos (Unsplash / Pexels
-  licences) and doctor portraits of models (Pexels licence), every file's source in
-  `seed/photos/SOURCES.md`. `photos:attach` brings later photos into existing records.
+- **Generated photos (2026-10-16):** `npm run photos:generate` — FLUX.1 Krea [dev] through
+  Hugging Face Inference Providers: `POST https://router.huggingface.co/fal-ai/fal-ai/flux/krea`
+  with the HF token, JSON `{ prompt, image_size, seed, sync_mode }` in, `images[0].url` (a data
+  URI) out. The router bills the HF account, so one token covers every provider. Prompts are built
+  from `seed-data.ts` (each clinic's look and specialty room; each doctor's gender and age); every
+  file's prompt goes to `manifest.json` / `SOURCES.md`, and a slot is redone only when its prompt
+  changes (or `--force`). fal's safety checker answers a false positive with a black image and
+  `has_nsfw_concepts: [true]` — the script retries with the next seed instead of saving it.
+  `photos:attach -- --replace` brings new files into existing records.
 
 ### Interview questions
 
-1. **Which images may a public demo use?** Only ones with a known licence that allows it
-   (Unsplash, Pexels), each source recorded — arbitrary search results have unknown owners.
-2. **Why no people in the clinic photos?** A person in a clinic photo reads as its staff or
+1. **Why generated portraits instead of stock photos?** A stock model is a real person who would
+   appear as a fictional doctor with ratings and reviews; a generated face belongs to nobody. Each
+   file's prompt is recorded, so the set can be rebuilt or extended.
+2. **How do you make a paid, flaky batch job safe to rerun?** Idempotent slots (skip a file whose
+   prompt is unchanged), a fixed seed per file, stop at the first hard error, retry only the known
+   soft one (the safety checker's black frame).
+3. **Why no people in the clinic photos?** A person in a clinic photo reads as its staff or
    patient; the doctor portraits are separate and the site says the data is fictional.
-3. **Why attach photos instead of reseeding?** Reseeding changes every id; in production that
+4. **Why attach photos instead of reseeding?** Reseeding changes every id; in production that
    would break bookings, reviews and links. Updating the two fields keeps everything else.

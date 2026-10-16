@@ -3,8 +3,11 @@
  * reviews stay): a seed doctor without a `doctorImage` gets their portrait from
  * seed/photos/doctors, and a seed clinic with fewer photos than seed/photos/clinics now holds
  * gets the full, ordered set (its old copies are deleted). Run after adding files there.
+ * With --replace every seed clinic and doctor gets the current files, whatever they had (after
+ * `photos:generate --force` made new ones); the old copies are deleted.
  *
  *   npm run photos:attach
+ *   npm run photos:attach -- --replace
  *
  * The database follows NODE_ENV, as seed:admin does (MONGO_PROD in production, else MONGO_DEV).
  */
@@ -25,6 +28,7 @@ async function main(): Promise<void> {
 	if (!uri) throw new Error('No MONGO_PROD / MONGO_DEV in .env.');
 	await mongoose.connect(uri);
 	const m = models();
+	const replace = process.argv.includes('--replace');
 	let attached = 0;
 	for (const clinic of CLINICS) {
 		const files = fs
@@ -32,7 +36,7 @@ async function main(): Promise<void> {
 			.filter((file) => file.startsWith(`${clinic.slug}-`) && /\.(jpg|webp)$/.test(file))
 			.sort((a, b) => Number(/-(\d+)\./.exec(a)?.[1]) - Number(/-(\d+)\./.exec(b)?.[1]));
 		const record = await m.Clinic.findOne({ clinicName: clinic.name, clinicNameKo: clinic.nameKo });
-		if (!record || (record.clinicImages?.length ?? 0) >= files.length) continue;
+		if (!record || (!replace && (record.clinicImages?.length ?? 0) >= files.length)) continue;
 		fs.mkdirSync(path.join(ROOT, 'uploads', 'clinic'), { recursive: true });
 		const images = files.map((file) => {
 			const stored = `uploads/clinic/${randomUUID()}${path.extname(file)}`;
@@ -53,13 +57,22 @@ async function main(): Promise<void> {
 			const doctor = await m.Doctor.findOne({
 				doctorName: seedDoctor.name,
 				doctorNameKo: seedDoctor.nameKo,
-				$or: [{ doctorImage: { $exists: false } }, { doctorImage: '' }, { doctorImage: null }],
+				...(replace
+					? {}
+					: {
+							$or: [
+								{ doctorImage: { $exists: false } },
+								{ doctorImage: '' },
+								{ doctorImage: null },
+							],
+						}),
 			});
 			if (!doctor) continue;
 			const stored = `uploads/doctor/${randomUUID()}${path.extname(file)}`;
 			fs.mkdirSync(path.join(ROOT, 'uploads', 'doctor'), { recursive: true });
 			fs.copyFileSync(file, path.join(ROOT, stored));
 			await m.Doctor.updateOne({ _id: doctor._id }, { $set: { doctorImage: stored } });
+			if (doctor.doctorImage) fs.rmSync(path.join(ROOT, doctor.doctorImage), { force: true });
 			attached++;
 			console.log(`${seedDoctor.name} ← ${path.basename(file)}`);
 		}

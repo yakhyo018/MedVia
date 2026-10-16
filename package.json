@@ -23,6 +23,7 @@
 		"seed:admin": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/seed-admin.ts",
 		"seed:demo": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/seed-demo.ts",
 		"photos:attach": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/attach-photos.ts",
+		"photos:generate": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/generate-photos.ts",
 		"clean:test": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/clean-test.ts",
 		"eval:translate": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/eval-translate.ts",
 		"eval:assistant": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/eval-assistant.ts"

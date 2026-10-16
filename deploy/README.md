@@ -106,12 +106,13 @@ docker image prune -f                           # old layers fill the 50 GB disk
 
 ## 8. New seed photos later
 
-Add the files to `apps/medvia-api/src/scripts/seed/photos/clinics|doctors/` (licensed stock, source
-in `SOURCES.md`), commit, push. On the server, after `git pull`:
+On the laptop: `npm run photos:generate` (HF credits; see the script's header), look at every
+file, commit, push. On the server, after `git pull`:
 
 ```bash
 docker compose -f docker-compose.prod.yml build tools
-docker compose -f docker-compose.prod.yml run --rm tools npm run photos:attach
+docker compose -f docker-compose.prod.yml run --rm tools npm run photos:attach              # new slots
+docker compose -f docker-compose.prod.yml run --rm tools npm run photos:attach -- --replace # changed files
 ```
 
 ## Notes

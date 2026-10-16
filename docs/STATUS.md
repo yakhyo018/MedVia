@@ -17,12 +17,14 @@ Now the production release (frontend F9): `feature/seed-variety` (below) is read
   한빛치과 (Seocho), 잠실가족치과, 이태원 글로벌치과 (with its director's name), Myeongdong Skin Lab,
   압구정라인의원 (Ansan). The new eight match no real clinic; Seoul Glow, Namsan and the tests'
   names were clean and kept.
-- **Photos** (`seed/photos/clinics|doctors/<slug>-<n>.jpg`, sources in `seed/photos/SOURCES.md`):
-  licensed stock only — clinics 3–4 each (Unsplash / Pexels interiors without people, signs or
-  logos), doctors Pexels portraits of East Asian models, 8 women of 24 (~30 %, as asked — six
-  doctors were renamed to men). No AI-generated images (removed at the user's request). The
-  landing samples were dropped as clinic photos (all show people). `photos:attach` brings later
-  photos into existing records without a reseed.
+- **Photos** (`seed/photos/clinics|doctors/<slug>-<n>.jpg`, prompts in `seed/photos/SOURCES.md`):
+  **generated** (2026-10-16, the user's decision after adding $5 of Hugging Face credits; this
+  replaces the stock photos of 2026-10-15) — `npm run photos:generate`, FLUX.1 Krea [dev] through
+  HF Inference Providers (fal-ai), ~$0.04 an image. Clinics: 4 each (entrance, reception,
+  treatment room, consultation room; the clinic's own look, no people, no signs); doctors: a
+  studio portrait matching gender and age, 8 women of 24. `sips` shrinks them to web size on
+  macOS. fal's safety checker sometimes returns a black frame for an empty room: the script
+  retries with the next seed. `photos:attach -- --replace` swaps the photos of existing records.
 - Dev DB reseeded; `clean:test` removed the old test accounts (also the F5 test clinic).
 
 ## getTrendingTreatments (2026-10-13)

@@ -85,8 +85,8 @@ const FUTURE_DAYS = 14;
 /** "09:30" → 570 (minutes after midnight). */
 const minutesOf = (clock: string) => Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3, 5));
 /**
- * Photos: licensed stock files per clinic and doctor (seed/photos/clinics/<slug>-<n>.jpg,
- * seed/photos/doctors/<slug>-<n>.jpg — sources in seed/photos/SOURCES.md). A clinic without own
+ * Photos: generated files per clinic and doctor (seed/photos/clinics/<slug>-<n>.jpg,
+ * seed/photos/doctors/<slug>-<n>.jpg — `npm run photos:generate`, prompts in seed/photos/SOURCES.md). A clinic without own
  * files falls back to the landing sample for its specialty, a doctor shows initials. Every record
  * gets its own copy, so `--reset` can delete them.
  */
