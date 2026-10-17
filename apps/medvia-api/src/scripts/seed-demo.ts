@@ -7,9 +7,12 @@
  *   npm run seed:demo -- --reset   removes the demo data (and only it), then seeds again
  *
  * Never in a real production: only with DEMO_MODE=true (the portfolio site, synthetic data only,
- * SEED_PASSWORD of 16+ characters). Every account is <name>@seed.medvia.test with SEED_PASSWORD;
- * the demo logins are feride@seed.medvia.test (patient), clinic01@seed.medvia.test (clinic),
- * doctor01@seed.medvia.test (doctor) and admin@seed.medvia.test (admin).
+ * SEED_PASSWORD of 6+ characters there, 8+ in development). Every account is
+ * <name>@seed.medvia.test with SEED_PASSWORD; the demo logins are feride@seed.medvia.test
+ * (patient), clinic01@seed.medvia.test (clinic), doctor01@seed.medvia.test (doctor) and, in
+ * development only, admin@seed.medvia.test (admin). On the public site that admin gets a random
+ * password nobody knows — it still signs the notices and marks the demo data as present, but a
+ * short demo password can never open the admin panel; the real admin comes from seed:admin.
  *
  * Fast on purpose: documents are built with the real schemas (defaults, casting, validation)
  * and inserted in bulk, not sent through the API. The rules still hold: answers are
@@ -18,7 +21,7 @@
  */
 import 'reflect-metadata';
 import 'dotenv/config';
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import mongoose, { Model, Types } from 'mongoose';
@@ -217,7 +220,7 @@ async function reset(m: Models): Promise<void> {
 
 /* ───────────────────────── seed ───────────────────────── */
 
-async function seed(m: Models, password: string): Promise<void> {
+async function seed(m: Models, password: string, production: boolean): Promise<void> {
 	faker.seed(SEED);
 	fakerRU.seed(SEED);
 	fakerUZ_UZ_latin.seed(SEED);
@@ -243,7 +246,13 @@ async function seed(m: Models, password: string): Promise<void> {
 	});
 
 	/* members */
-	const admin = account('admin', MemberType.ADMIN, 'MedVia Team', { memberLang: Language.EN });
+	const admin = account('admin', MemberType.ADMIN, 'MedVia Team', {
+		memberLang: Language.EN,
+		// Public site: no one can sign in as this admin (see the header).
+		...(production && {
+			memberPassword: await bcrypt.hash(randomBytes(32).toString('base64'), 10),
+		}),
+	});
 	const clinicAccounts = DEMO_CLINICS.map((_, i) =>
 		account(
 			`clinic${String(i + 1).padStart(2, '0')}`,
@@ -859,7 +868,7 @@ async function seed(m: Models, password: string): Promise<void> {
 			`${follows.size} follows, ${likes.size} likes, ${notices.length} notices and FAQ.`,
 			`RECOUNT — ${recount}`,
 			`RANK — ${rank}`,
-			`Sign in with feride${DOMAIN}, clinic01${DOMAIN}, doctor01${DOMAIN} or admin${DOMAIN} and SEED_PASSWORD.`,
+			`Sign in with feride${DOMAIN}, clinic01${DOMAIN}, doctor01${DOMAIN}${production ? '' : ` or admin${DOMAIN}`} and SEED_PASSWORD.`,
 		].join('\n'),
 	);
 }
@@ -872,7 +881,9 @@ async function main(): Promise<void> {
 			'seed:demo runs in production only with DEMO_MODE=true (a demo-data-only site).',
 		);
 	const password = process.env.SEED_PASSWORD;
-	const minimum = production ? 16 : 8;
+	// The public demo password is meant to be short and shareable (the user's choice); the demo
+	// admin never uses it in production.
+	const minimum = production ? 6 : 8;
 	if (!password || password.length < minimum)
 		throw new Error(`Set SEED_PASSWORD (at least ${minimum} characters) in .env first.`);
 	const uri = production ? process.env.MONGO_PROD : process.env.MONGO_DEV;
@@ -884,7 +895,7 @@ async function main(): Promise<void> {
 	if (process.argv.includes('--reset')) await reset(m);
 	else if (exists)
 		throw new Error('The demo data already exists. Run with -- --reset to rebuild it.');
-	await seed(m, password);
+	await seed(m, password, production);
 	await mongoose.disconnect();
 }
 

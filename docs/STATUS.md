@@ -15,6 +15,14 @@ Now the production release (frontend F9): `feature/seed-variety` (below) is read
   `up -d --force-recreate medvia-api medvia-batch`). Local Redis: `docker compose up -d medvia-redis`
   (the service was `redis`). `Dockerfile` / `.dockerignore` removed.
 
+## Production seed (2026-10-17, the user's choice)
+
+- `seed:demo` in production accepts a SEED_PASSWORD of 6+ characters (was 16; development
+  keeps 8) — a short, shareable demo password. In exchange `admin@seed.medvia.test` gets a random
+  password in production (it still signs the notices and marks the demo data as present): the
+  admin panel opens only with seed:admin's ADMIN_EMAIL / ADMIN_PASSWORD.
+- Env validation: MONGO_PROD is required in production, MONGO_DEV only in development.
+
 ## Health-tip photos (2026-10-16, branch `feature/article-images`)
 
 - The user's request: the existing article API, no new module — `articleImages` (0–2 paths, the
