@@ -11,8 +11,18 @@ export const envValidationSchema = Joi.object({
 	PORT_API: Joi.number().port().default(3000),
 	PORT_BATCH: Joi.number().port().default(3001),
 
-	MONGO_DEV: mongoUri.required(),
-	MONGO_PROD: mongoUri.allow('').optional(),
+	// The database module reads MONGO_PROD in production and MONGO_DEV otherwise: only the one in
+	// use is required, so a production .env carries no development database at all.
+	MONGO_DEV: mongoUri.when('NODE_ENV', {
+		is: 'production',
+		then: Joi.optional().allow(''),
+		otherwise: Joi.required(),
+	}),
+	MONGO_PROD: mongoUri.when('NODE_ENV', {
+		is: 'production',
+		then: Joi.required(),
+		otherwise: Joi.optional().allow(''),
+	}),
 
 	REDIS_URL: Joi.string()
 		.pattern(/^rediss?:\/\//)
