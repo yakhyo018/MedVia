@@ -5,7 +5,7 @@ Both repositories have `.github/workflows/ci-cd.yml`:
 | Job | When | What |
 | --- | --- | --- |
 | `ci` | every push to `main`, `develop`, `feature/**`, `fix/**`, `chore/**`, and every PR to `main` / `develop` | API: `npm ci` → typecheck → lint → Jest. Web: `yarn install --frozen-lockfile` → typecheck → lint → `i18n:check` → `next build` |
-| `deploy` | a push to `main`, after `ci` passed, only when the repository variable `DEPLOY_ENABLED` is `true` | SSH to the server → `ci-deploy.sh api` / `web` → the repository's `deploy.sh` → wait until `https://api.medvia.tech` / `https://medvia.tech` answers |
+| `deploy` | a push to `main`, after `ci` passed, only when the repository variable `DEPLOY_ENABLED` is `true` | SSH to the server (3 tries when the connection fails, 15 s timeout each) → `ci-deploy.sh api` / `web` → the repository's `deploy.sh` → wait until `https://api.medvia.tech` / `https://medvia.tech` answers |
 
 Postman is not in CI: it needs a running API and a database.
 

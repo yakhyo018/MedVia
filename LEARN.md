@@ -2610,3 +2610,47 @@ article API stored text only.
    everyone; only paths our uploader produced are safe and served by us.
 3. **Why does update read the post first?** The rule depends on the board, which is not in the
    update input — trusting the client for it would let a question gain photos.
+
+## CI/CD — GitHub Actions (2026-10-18)
+
+**Problem.** Every check (typecheck, lint, Jest) and every deploy (SSH, `./deploy.sh`) was done by
+hand; a broken commit could reach `main` and the server.
+
+- **One workflow per repository** (`.github/workflows/ci-cd.yml`), two jobs. `ci` runs on every
+  push and PR: `npm ci` (exactly the lockfile) → typecheck → lint → Jest — no database or `.env`
+  needed, which was checked in a clean checkout first. `deploy` has `needs: ci` and
+  `if: push to main && vars.DEPLOY_ENABLED == 'true'`: a red CI never deploys, and one repository
+  variable switches automatic deploys off.
+- **The deploy key can do one thing.** A separate ed25519 key (`medvia_ci`) sits in GitHub Secrets;
+  on the server its `authorized_keys` line starts with
+  `command="/home/MedVia-project/ci-deploy.sh",no-pty,no-port-forwarding,…`. Whatever the client
+  asks, sshd runs that script; it reads `$SSH_ORIGINAL_COMMAND` and accepts only `api` or `web`.
+  A leaked key can restart the site, not read `.env` or open a shell.
+- **The host is pinned.** `DEPLOY_KNOWN_HOSTS` (from `ssh-keyscan`) is written to `known_hosts`, and
+  `BatchMode=yes` refuses any prompt: a server with another host key is never trusted.
+- **Concurrency.** `concurrency: deploy-api`, `cancel-in-progress: false` — a second push waits
+  instead of cutting a deploy in half.
+- **Retry only what is safe to retry.** The first web deploy failed with
+  `Connection timed out`: one runner could not reach the server, while the API runner (another
+  Azure IP) had connected — the server's auth log showed only that one. ssh exits 255 when the
+  connection fails, so the step tries 3 times on 255 (15 s connect timeout) and fails at once on
+  any other code, which comes from `deploy.sh`.
+- **Health check after the deploy.** The job waits until `https://api.medvia.tech/graphql` answers
+  `{__typename}` (up to 10 minutes).
+- Cost of the simple design: containers install and build after the restart, so a deploy takes
+  the API down ~1–2 min and the site ~3 min. Building images in CI and pulling them would cut it to
+  seconds.
+
+### Interview questions
+
+1. **CI vs CD?** CI checks every change automatically (install, types, lint, tests, build); CD
+   ships a change that passed, here by SSH to the server after a push to `main`.
+2. **Why `npm ci` and not `npm install` in CI?** It installs exactly the lockfile and fails if
+   `package.json` and the lock disagree — the build is reproducible.
+3. **How do you give CI access to a server safely?** A key used only by CI, restricted with a
+   forced command and `no-pty`; the host key pinned in `known_hosts`; secrets in the CI's secret
+   store, never in the repository.
+4. **When is a retry safe?** When the operation did not start or is idempotent. A connection
+   failure (exit 255) never reached `deploy.sh`; a failure inside it must stop the job.
+5. **What stops a broken commit from reaching production?** `needs: ci` — the deploy job runs only
+   after typecheck, lint and tests passed; branch protection can also require them before a merge.
