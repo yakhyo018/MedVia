@@ -15,6 +15,13 @@ Now the production release (frontend F9): `feature/seed-variety` (below) is read
   `up -d --force-recreate medvia-api medvia-batch`). Local Redis: `docker compose up -d medvia-redis`
   (the service was `redis`). `Dockerfile` / `.dockerignore` removed.
 
+## CI/CD (2026-10-18)
+
+- GitHub Actions in both repositories (`.github/workflows/ci-cd.yml`): CI on every push / PR,
+  deploy on a push to `main` over SSH with a forced-command key (`docs/CI-CD.md`). First automatic
+  deploys done (API at once; web after a runner timeout → re-run). SSH now retries 3× on a
+  connection failure. Postman stays manual (needs a running API).
+
 ## Production seed (2026-10-17, the user's choice)
 
 - `seed:demo` in production accepts a SEED_PASSWORD of 6+ characters (was 16; development
