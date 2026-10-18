@@ -1,0 +1,83 @@
+# CI: every push and pull request — install, typecheck, lint, Jest (no database or .env needed).
+# CD: a push to main that passes CI deploys the API to api.medvia.tech over SSH.
+#   The deploy job runs only when the repository variable DEPLOY_ENABLED is "true" and the
+#   secrets DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS are set (docs/CI-CD.md).
+name: CI/CD
+
+on:
+  push:
+    branches: [main, develop, 'feature/**', 'fix/**', 'chore/**']
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Typecheck, lint, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install (exactly the lockfile)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint:check
+
+      - name: Jest
+        run: npm test -- --ci
+
+  deploy:
+    name: Deploy to api.medvia.tech
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://api.medvia.tech/graphql
+    # One deploy at a time; a newer push waits instead of cancelling a half-done one.
+    concurrency:
+      group: deploy-api
+      cancel-in-progress: false
+    steps:
+      - name: SSH key and the server's known host key
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      # The key is locked to ci-deploy.sh on the server (forced command): "api" is all it can ask.
+      - name: Deploy (the server pulls main and recreates the API and the batch)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" api
+
+      - name: Wait until the API answers
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf -H 'content-type: application/json' -d '{"query":"{__typename}"}' \
+              https://api.medvia.tech/graphql > /dev/null; then
+              echo "API is up"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "The API did not answer within 10 minutes"
+          exit 1
