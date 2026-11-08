@@ -17,9 +17,8 @@ Now the production release (frontend F9): `feature/seed-variety` (below) is read
   that script is no longer needed for MedVia content.
 - Checked: Jest 285, typecheck, lint, build; `navi:sync` against the running Navi → unchanged 55;
   a temporary FAQ → indexed 1 → deleted 1 → back to 55 unchanged. No new GraphQL API → no Postman.
-- Open: `getBatchStatus` now returns a `NAVI_SYNC` row (`Object.values(BatchName)`); MedVia-next
-  needs `NAVI_SYNC` in `libs/enums/batch.enum.ts` and a label in `admin/adminText.ts`, or the
-  dashboard row has no label. Navi has no list endpoint, so deletion sends a DELETE for
+- `getBatchStatus` now returns a `NAVI_SYNC` row; MedVia-next (`feature/navi`) labels it
+  "MedVia Navi index sync · Daily 03:30" in five languages. Open: Navi has no list endpoint, so deletion sends a DELETE for
   every non-live id each night (a few dozen today).
 
 ## N1 MedVia Navi through the API (2026-11-08, branch `feature/navi`)
