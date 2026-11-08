@@ -1,0 +1,30 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      query AskNavi($input: AskNaviInput!) {
+        askNavi(input: $input) {
+          answer
+        }
+      }
+    variables: |-
+      {
+        "input": {
+          "question": "How far ahead can I book a treatment?"
+        }
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+
+      pm.test('refused: Bearer token is not provided!', () => pm.expect(msg).to.include('Bearer token is not provided!'));
+    language: text/javascript
+order: 3000

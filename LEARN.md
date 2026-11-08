@@ -2697,3 +2697,93 @@ Ministry of Food and Drug Safety, SaMD — Software as a Medical Device).
 4. The REST response was first `...scan` and leaked `memberId` / `__v` — why does GraphQL hide
    that and REST does not?
 5. How would you measure the model's quality — and its bias across skin tones (Fitzpatrick I–VI)?
+
+## N1 — MedVia Navi through the API: `askNavi` (2026-11-08)
+
+**Problem.** Navi (the RAG service in `~/Desktop/medvia-navi`) answers questions from MedVia's own
+content with sources. The site needs it, but Navi's API key must never reach a browser, and a slow
+or stopped Navi must not take anything else in MedVia down with it.
+
+**Alternatives.**
+- The browser calls Navi directly: the key would be in the page source — anyone could use Navi
+  as a free model, and the per-member limit would be impossible (Navi knows no members).
+- A REST proxy route: works, but the site speaks GraphQL everywhere else.
+- **Chosen:** a GraphQL query `askNavi` in a small `navi` module. MedVia holds the key, checks the
+  member, limits the rate, calls Navi with a timeout and turns Navi's sources into site links.
+
+**Code.**
+- `navi.service.ts`: `fetch` with `AbortSignal.timeout(15 s)`; any failure (unreachable, 401 from
+  a wrong key, 5xx) → one `ServiceUnavailableException("not available")`, the log says which.
+- 10 questions per member per minute: `INCR navi:ask:<memberId>:<minute>`, TTL 120 s, fail open.
+- `navi.rules.ts` (pure, Jest): `parseDocId` and `sourceUrl` — `clinic-<id>` → clinic page,
+  `treatment-<id>` → its clinic's page (one `$in` query for every treatment among the sources),
+  `tip-<id>` → the article, `faq` → `/cs`, `notice-<id>` → the notice, guides → no link.
+- `NAVI_URL` / `NAVI_API_KEY` both empty → "not available"; MedVia starts without Navi.
+- Postman `N1 — Navi` (3 requests): when Navi is not running the answer tests are **skipped**
+  (`pm.test.skip`), so `npm run test:api` stays green on a machine without Navi.
+
+**Interview questions.**
+1. **Why does the browser not call the RAG service directly?** The API key would be public, and
+   only MedVia knows who the member is — the rate limit and the login need it.
+2. **What happens when Navi is down?** `askNavi` returns "not available" within the 15-second
+   timeout; nothing else calls Navi, so bookings, chat and search are unaffected.
+3. **Why is `askNavi` a Query, not a Mutation?** It changes nothing the client can see; the rate
+   counter is an implementation detail, like a cache.
+4. **Why does MedVia build the source links, not Navi?** Navi knows documents, MedVia knows its
+   own pages — and a treatment's page depends on MedVia's data (its clinic).
+5. **How would you make this survive a Navi outage better?** Cache frequent answers in Redis by a
+   hash of the question (with a TTL), or fall back to a keyword FAQ search.
+
+## N2 — Navi's index follows MedVia: the `NAVI_SYNC` batch (2026-11-08)
+
+**Problem.** Navi's index was filled by its own `scripts/export_medvia.py`, run by hand. A clinic
+that was suspended, a deleted health tip or a new FAQ reached Navi only when someone remembered
+to export again — until then Navi answered from content the site no longer shows.
+
+**Alternatives.**
+- Keep the Python export and schedule it: two schedulers, and the export reads the public GraphQL
+  with page limits (50 clinics, 20 doctors) that silently cut a growing catalogue.
+- Push an event to Navi on every change (clinic edited, tip deleted…): fastest, but a hook in
+  every module, and a lost event is lost forever — a nightly full pass is needed anyway.
+- **Chosen:** a nightly batch (`NAVI_SYNC`, 03:30 Seoul, after RANK) that reads MongoDB like
+  RECOUNT and RANK do and sends *everything* live. Navi hashes each document and re-embeds only
+  new or edited ones, so "send all" costs one hash lookup per unchanged document.
+
+**Code.**
+- `jobs/navi.rules.ts` (pure, Jest): one function per source — `clinicDocument`,
+  `treatmentDocument`, `tipDocument`, `noticeDocument` — writing the exact Markdown of
+  `export_medvia.py`. Byte-for-byte matters: the hash covers title + source_type + lang + text,
+  so one extra space would re-embed the catalogue. Python habits are copied on purpose: an empty
+  field prints `None`, `str.title()` → `Gangnam-gu`, `f'{n:,}'` → `1,200,000 KRW`, content under
+  30 characters is dropped. Checked by diffing both outputs: 55 of 55 equal, `meta` included.
+- `jobs/navi-sync.service.ts`: the API's filters **and sort orders** (doctors newest first,
+  treatments cheapest first, a treatment's doctors oldest first) — the order is in the text, so in
+  the hash. `POST /v1/documents` in parts of 200 (Navi's limit), 120 s timeout each.
+- Deletion: Navi has no "list documents" endpoint, so the batch computes every id MedVia could
+  ever have sent (every clinic, treatment, health tip; `faq-` *and* `notice-` for every notice —
+  a moved notice changes its id) minus the live ones, and sends `DELETE` for each. 404 = Navi
+  never had it, counted as "not in Navi". `guide-*` belongs to Navi and is never touched.
+- Failure: keys empty → `skipped: Navi is not configured` (SUCCESS). Navi down or answering an
+  error → the run throws, `BatchLogService` records FAILED with the reason, the batch process
+  keeps running and the next night retries. Nothing else in the batch depends on it.
+- `npm run navi:sync` runs the same service through the same `BatchLogService` (so the admin
+  dashboard shows it), connecting mongoose directly like `clean:test` — no Nest app, no crons.
+- Checked: run 1 → `indexed 0, unchanged 55` (the export had filled Navi with the same text);
+  a temporary FAQ → `indexed 1`; set to DELETE → `deleted 1`; removed → back to 55 unchanged.
+
+**Interview questions.**
+1. **Why send the whole catalogue every night instead of only what changed?** The receiver's hash
+   makes unchanged documents almost free, and a full pass heals anything a change-tracker would
+   have missed (a lost event, a manual DB fix). Correct first, then cheap.
+2. **Why must the Markdown match the old export byte for byte?** The hash decides whether Navi
+   re-embeds. A different template is not wrong, but the first run would re-embed everything —
+   fine once, by choice, never by accident.
+3. **How do you delete from an index you cannot list?** Derive the ids: MedVia knows every row it
+   ever had (soft delete keeps them), so "all ids minus live ids" covers deletions, status changes
+   and a FAQ that became a NOTICE. The cost is one 404 per never-indexed id; a `GET /v1/documents`
+   in Navi would remove that cost.
+4. **Why does a Navi outage not fail the batch app?** `BatchLogService` catches the error and logs
+   FAILED; crons are independent, so SLOT_RELEASE keeps running every five minutes.
+5. **Why read MongoDB and not MedVia's GraphQL?** The batch already shares the schemas, needs no
+   HTTP round trips or page limits, and can see deleted rows — the public API cannot, and those
+   are exactly the ones to remove from Navi.

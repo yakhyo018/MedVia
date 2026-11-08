@@ -21,6 +21,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { AccessLogModule } from './access-log/access-log.module';
 import { AssistantModule } from './assistant/assistant.module';
 import { FaceScanModule } from './face-scan/face-scan.module';
+import { NaviModule } from './navi/navi.module';
 import { TestSupportModule } from './test-support/test-support.module';
 import { testSupportEnabled } from '../libs/config';
 
@@ -44,6 +45,7 @@ import { testSupportEnabled } from '../libs/config';
 		AccessLogModule,
 		AssistantModule,
 		FaceScanModule,
+		NaviModule,
 		FollowModule,
 		ViewModule,
 		AuditLogModule,

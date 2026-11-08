@@ -1,0 +1,43 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation Signup($input: MemberInput!) {
+        signup(input: $input) {
+          _id
+          memberLang
+          accessToken
+        }
+      }
+    variables: |-
+      {
+        "input": {
+          "memberType": "USER",
+          "memberEmail": "navi.feride.{{stamp}}@medvia.test",
+          "memberPassword": "Patient#2026",
+          "memberFullName": "Feride Karimova",
+          "memberLang": "RU",
+          "termsAccepted": true
+        }
+      }
+scripts:
+  - type: beforeRequest
+    code: |-
+      pm.environment.set('stamp', String(Date.now()));
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      const body = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.environment.set('naviToken', (gql.signup || {}).accessToken || '');
+    language: text/javascript
+order: 1000

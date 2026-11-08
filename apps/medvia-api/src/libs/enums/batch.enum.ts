@@ -5,6 +5,7 @@ export enum BatchName {
 	SLOT_RELEASE = 'SLOT_RELEASE',
 	RECOUNT = 'RECOUNT',
 	RANK = 'RANK',
+	NAVI_SYNC = 'NAVI_SYNC',
 }
 registerEnumType(BatchName, { name: 'BatchName' });
 

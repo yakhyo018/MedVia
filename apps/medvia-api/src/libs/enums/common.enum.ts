@@ -55,6 +55,8 @@ export enum Messages {
 	ASSISTANT_DAILY_LIMIT = 'You have reached today’s limit for the assistant!',
 	FACE_SCAN_DAILY_LIMIT = 'You have reached today’s limit for face scans!',
 	FACE_SCAN_PATIENTS_ONLY = 'Only patients can scan a face photo!',
+	NAVI_UNAVAILABLE = 'MedVia Navi is not available right now. Please try again later!',
+	NAVI_RATE_LIMIT = 'Too many questions in a minute. Please wait a moment!',
 	ASSISTANT_SESSION_FULL = 'This conversation is full, please start a new one!',
 	NO_PENDING_HOLD = 'There is no time waiting for your confirmation, or it has expired!',
 	TRANSITION_NOT_ALLOWED = 'This booking cannot be changed this way!',
