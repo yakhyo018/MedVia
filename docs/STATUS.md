@@ -7,14 +7,28 @@ _Last updated: 2026-10-15 — every planned backend milestone is done; frontend 
 Now the production release (frontend F9): `feature/seed-variety` (below) is ready, then a
 `DEMO_MODE` for production, Docker Compose files and the server (`medvia.tech`)._
 
+## N2 Navi sync from medvia-batch (2026-11-08, branch `feature/navi`)
+
+- Batch `NAVI_SYNC` (03:30 Seoul, after RANK) + `npm run navi:sync`: live clinics, treatments,
+  HEALTH_TIP articles, FAQ and NOTICE → Navi `POST /v1/documents` (200 per call); no longer live →
+  `DELETE /v1/documents/{id}` (404 = fine; `guide-*` never touched). Keys empty → skipped; Navi
+  down → FAILED in batchLogs, the batch keeps running.
+- Markdown equals `medvia-navi/scripts/export_medvia.py` byte for byte (diffed: 55/55, meta too);
+  that script is no longer needed for MedVia content.
+- Checked: Jest 285, typecheck, lint, build; `navi:sync` against the running Navi → unchanged 55;
+  a temporary FAQ → indexed 1 → deleted 1 → back to 55 unchanged. No new GraphQL API → no Postman.
+- Open: `getBatchStatus` now returns a `NAVI_SYNC` row (`Object.values(BatchName)`); MedVia-next
+  needs `NAVI_SYNC` in `libs/enums/batch.enum.ts` and a label in `admin/adminText.ts`, or the
+  dashboard row has no label. Navi has no list endpoint, so deletion sends a DELETE for
+  every non-live id each night (a few dozen today).
+
 ## N1 MedVia Navi through the API (2026-11-08, branch `feature/navi`)
 
 - `askNavi(input: { question })` for any signed-in member → the answer, `refused`, the sources with
   their page on the site, and a disclaimer. 10 questions a minute (Redis, fail open), 15 s timeout.
 - `.env`: `NAVI_URL`, `NAVI_API_KEY` (= the key in `medvia-navi/.env`). Empty → "not available".
 - Checked: Jest 274, typecheck, lint, build; Postman `N1 — Navi` 3/3 with Navi running.
-- Next: the "Ask MedVia Navi" card on the site's `/cs` page; then the nightly sync
-  (`medvia-batch` → `POST /v1/documents`) — until then Navi's index comes from its own export script.
+- Next: the "Ask MedVia Navi" card on the site's `/cs` page. The nightly sync is N2 (above).
 
 ## AI-3 Face scan (2026-11-06, branch `feature/face-scan`, not merged)
 

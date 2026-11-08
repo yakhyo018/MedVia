@@ -9,7 +9,14 @@ import { BatchLogService } from './batch-log.service';
 import { SlotReleaseService } from './jobs/slot-release.service';
 import { RecountService } from './jobs/recount.service';
 import { RankService } from './jobs/rank.service';
-import { BATCH_TIME_ZONE, CRON_RANK, CRON_RECOUNT, CRON_SLOT_RELEASE } from './libs/config';
+import { NaviSyncService } from './jobs/navi-sync.service';
+import {
+	BATCH_TIME_ZONE,
+	CRON_NAVI_SYNC,
+	CRON_RANK,
+	CRON_RECOUNT,
+	CRON_SLOT_RELEASE,
+} from './libs/config';
 
 /**
  * The whole-collection work, away from the API's event loop. The per-booking jobs (expiry,
@@ -25,11 +32,13 @@ export class BatchController {
 		slotRelease: SlotReleaseService,
 		recount: RecountService,
 		rank: RankService,
+		naviSync: NaviSyncService,
 	) {
 		this.work = {
 			[BatchName.SLOT_RELEASE]: () => slotRelease.run(),
 			[BatchName.RECOUNT]: () => recount.run(),
 			[BatchName.RANK]: () => rank.run(),
+			[BatchName.NAVI_SYNC]: () => naviSync.run(),
 		};
 	}
 
@@ -51,6 +60,11 @@ export class BatchController {
 	@Cron(CRON_RANK, { name: BatchName.RANK, timeZone: BATCH_TIME_ZONE })
 	public async rank(): Promise<void> {
 		await this.runBatch(BatchName.RANK);
+	}
+
+	@Cron(CRON_NAVI_SYNC, { name: BatchName.NAVI_SYNC, timeZone: BATCH_TIME_ZONE })
+	public async naviSync(): Promise<void> {
+		await this.runBatch(BatchName.NAVI_SYNC);
 	}
 
 	/**
