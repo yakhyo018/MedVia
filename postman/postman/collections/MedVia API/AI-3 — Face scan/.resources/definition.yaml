@@ -1,0 +1,3 @@
+$kind: collection
+description: "The face scan with AI_PROVIDER=fake (the same reading every run, free). The photo goes over REST (multipart) and is never stored; only the reading is kept, the summary encrypted. Happy path: consent → scan → list → one → delete. Key failure: a scan without the AI consent is 403. Needs MEDICAL_ENC_KEY and AI_PROVIDER=fake."
+order: 16000

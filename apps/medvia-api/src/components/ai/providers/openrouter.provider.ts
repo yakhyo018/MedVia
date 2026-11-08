@@ -1,12 +1,21 @@
 import { Language } from '../../../libs/enums/common.enum';
-import { parseSummary, parseTranslation } from '../ai.rules';
-import { SUMMARY_SYSTEM, summaryUser, TRANSLATE_SYSTEM, translateUser } from '../ai.prompts';
+import { parseFaceAnalysis, parseSummary, parseTranslation } from '../ai.rules';
+import {
+	FACE_SYSTEM,
+	faceUser,
+	SUMMARY_SYSTEM,
+	summaryUser,
+	TRANSLATE_SYSTEM,
+	translateUser,
+} from '../ai.prompts';
 import {
 	AgentMessage,
 	AgentStep,
 	AgentToolCall,
 	AgentToolSpec,
 	AiProvider,
+	FaceAnalysis,
+	FaceImage,
 	QuestionAnswer,
 	TranslationResult,
 } from '../ai.types';
@@ -26,6 +35,8 @@ export interface OpenRouterConfig {
 	summaryModel: string;
 	/** A free model that supports tool calling (OpenRouter lists `tools` in its parameters). */
 	assistantModel: string;
+	/** A model that reads images; empty = face scans fail into FAILED, the rest still works. */
+	faceModel?: string;
 	/** Injected so a test can replace the network; defaults to Node's own fetch. */
 	fetchFn?: typeof fetch;
 }
@@ -113,6 +124,39 @@ export class OpenRouterProvider implements AiProvider {
 		const stop =
 			choice.finish_reason === 'length' ? 'max_tokens' : toolCalls.length ? 'tool_use' : 'end';
 		return { text: choice.message.content ?? '', toolCalls, stop };
+	}
+
+	/**
+	 * The photo as an OpenAI-style `image_url` with a data URL — the photo goes in the body,
+	 * never as a public link. Free vision models cannot all enforce a schema: the JSON is asked
+	 * for in the prompt and checked by parseFaceAnalysis.
+	 */
+	public async analyzeFace(image: FaceImage, lang: Language): Promise<FaceAnalysis> {
+		if (!this.config.faceModel) throw new Error('AI_MODEL_FACE is not set');
+		const dataUrl = `data:${image.mediaType};base64,${image.data.toString('base64')}`;
+		const res = await this.post(
+			JSON.stringify({
+				model: this.config.faceModel,
+				temperature: 0,
+				max_tokens: 1024,
+				messages: [
+					{ role: 'system', content: FACE_SYSTEM },
+					{
+						role: 'user',
+						content: [
+							{ type: 'image_url', image_url: { url: dataUrl } },
+							{ type: 'text', text: faceUser(lang) },
+						],
+					},
+				],
+			}),
+			CONVERSE_TIMEOUT_MS,
+		);
+		if (!res.ok) throw new Error(`openrouter responded ${res.status}`);
+		const body: any = await res.json();
+		const content = body?.choices?.[0]?.message?.content;
+		if (typeof content !== 'string' || !content) throw new Error('openrouter returned no content');
+		return parseFaceAnalysis(content);
 	}
 
 	/**

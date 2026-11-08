@@ -7,6 +7,19 @@ _Last updated: 2026-10-15 — every planned backend milestone is done; frontend 
 Now the production release (frontend F9): `feature/seed-variety` (below) is ready, then a
 `DEMO_MODE` for production, Docker Compose files and the server (`medvia.tech`)._
 
+## AI-3 Face scan (2026-11-06, branch `feature/face-scan`, not merged)
+
+- Approach C (the user's choice): MediaPipe in the browser (frontend, not built yet) + a vision
+  model behind `AiProvider.analyzeFace`. Cosmetic reading only, never a diagnosis.
+- `POST /face-scan` + `getMyFaceScans` / `getFaceScan` / `deleteFaceScan`; collection
+  `faceScans`. The photo is never stored (cut `faceScanImage`); `confidence` cut.
+- Checked: Jest 269, typecheck, lint, build; local API with the fake provider (consent 403,
+  happy path, blurry, renamed PHP 400, list, delete, 6th scan refused; summary stored encrypted;
+  `clean:test` removes FaceScan). Postman `AI-3 — Face scan` (8 requests, 20 assertions) passes
+  with a new valid fixture `postman/fixtures/face-photo.png` — `clinic-photo.png` is a PNG
+  without the IDAT CRC: `/upload` accepts it (magic bytes only), the face scan's chunk parser
+  rightly refuses it. Not yet: a real vision model, the frontend.
+
 ## Deploy files (2026-10-16)
 
 - `deploy/` removed by the user. Now `docker-compose.yml` (production, nestar style: Redis, API,

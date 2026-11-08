@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Language } from '../../../libs/enums/common.enum';
+import { FAKE_BLURRY_MARKER } from './fake.provider';
 import { AnthropicProvider } from './anthropic.provider';
 import { FAKE_FAIL_MARKER, FakeProvider } from './fake.provider';
 import { OpenRouterProvider, RETRY_DELAYS_MS } from './openrouter.provider';
@@ -411,5 +412,80 @@ describe('OpenRouterProvider — a busy free model', () => {
 		const { provider, calls } = answering([401]);
 		await expect(provider.converse('S', [{ role: 'user', text: 'hi' }], [])).rejects.toThrow('401');
 		expect(calls()).toBe(1);
+	});
+});
+
+describe('analyzeFace (AI-3)', () => {
+	const image = { data: Buffer.from('JPEGBYTES'), mediaType: 'image/jpeg' as const };
+	const reading =
+		'{"qualityIssues":[],"findings":[{"concern":"ACNE","severity":"MILD","zone":"CHIN"}],"summary":"Lyogkoye akne."}';
+
+	it('Anthropic: image block first, then the text; schema, low effort, fallbacks', async () => {
+		const { client, calls } = fakeClient(reply(reading));
+		const provider = new AnthropicProvider({
+			translateModel: 'claude-haiku-4-5',
+			summaryModel: 'claude-opus-5-5',
+			assistantModel: 'claude-opus-5-5',
+			client,
+		});
+		await expect(provider.analyzeFace(image, Language.RU)).resolves.toMatchObject({
+			findings: [{ concern: 'ACNE' }],
+		});
+		const sent = calls.beta[0];
+		expect(sent.model).toBe('claude-opus-5-5');
+		const [img, text] = sent.messages[0].content;
+		expect(img).toEqual({
+			type: 'image',
+			source: { type: 'base64', media_type: 'image/jpeg', data: image.data.toString('base64') },
+		});
+		expect(text.text).toContain('Russian');
+		expect(sent.output_config).toMatchObject({ effort: 'low', format: { type: 'json_schema' } });
+		expect(sent.fallbacks).toBe('default');
+	});
+
+	it('OpenRouter: the photo as a data URL in the body, never a link', async () => {
+		let sent: any;
+		const fetchFn = (async (_url: string, init: any) => {
+			sent = JSON.parse(init.body);
+			return { ok: true, json: async () => ({ choices: [{ message: { content: reading } }] }) };
+		}) as unknown as typeof fetch;
+		const provider = new OpenRouterProvider({
+			apiKey: 'k',
+			translateModel: 'm',
+			summaryModel: 'm',
+			assistantModel: 'm',
+			faceModel: 'free/vision',
+			fetchFn,
+		});
+		await provider.analyzeFace(image, Language.UZ);
+		expect(sent.model).toBe('free/vision');
+		expect(sent.messages[1].content[0].image_url.url).toMatch(/^data:image\/jpeg;base64,/);
+	});
+
+	it('OpenRouter without AI_MODEL_FACE fails instead of sending a photo to a text model', async () => {
+		const provider = new OpenRouterProvider({
+			apiKey: 'k',
+			translateModel: 'm',
+			summaryModel: 'm',
+			assistantModel: 'm',
+			fetchFn: (async () => {
+				throw new Error('must not be called');
+			}) as unknown as typeof fetch,
+		});
+		await expect(provider.analyzeFace(image, Language.EN)).rejects.toThrow('AI_MODEL_FACE');
+	});
+
+	it('Fake: fixed findings, a quality issue or a failure by marker', async () => {
+		const fake = new FakeProvider();
+		await expect(fake.analyzeFace(image, Language.EN)).resolves.toMatchObject({
+			findings: [{ concern: 'ACNE' }, { concern: 'PIGMENTATION' }],
+		});
+		const blurry = { ...image, data: Buffer.from(`x${FAKE_BLURRY_MARKER}x`) };
+		await expect(fake.analyzeFace(blurry, Language.EN)).resolves.toMatchObject({
+			qualityIssues: ['BLURRY'],
+			findings: [],
+		});
+		const failing = { ...image, data: Buffer.from(FAKE_FAIL_MARKER) };
+		await expect(fake.analyzeFace(failing, Language.EN)).rejects.toThrow();
 	});
 });

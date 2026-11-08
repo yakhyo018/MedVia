@@ -20,6 +20,7 @@ import { NotificationModule } from './notification/notification.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { AccessLogModule } from './access-log/access-log.module';
 import { AssistantModule } from './assistant/assistant.module';
+import { FaceScanModule } from './face-scan/face-scan.module';
 import { TestSupportModule } from './test-support/test-support.module';
 import { testSupportEnabled } from '../libs/config';
 
@@ -42,6 +43,7 @@ import { testSupportEnabled } from '../libs/config';
 		RealtimeModule,
 		AccessLogModule,
 		AssistantModule,
+		FaceScanModule,
 		FollowModule,
 		ViewModule,
 		AuditLogModule,

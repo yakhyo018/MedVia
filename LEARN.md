@@ -2654,3 +2654,46 @@ hand; a broken commit could reach `main` and the server.
    failure (exit 255) never reached `deploy.sh`; a failure inside it must stop the job.
 5. **What stops a broken commit from reaching production?** `needs: ci` — the deploy job runs only
    after typecheck, lint and tests passed; branch protection can also require them before a merge.
+
+## AI-3 — Face scan: a cosmetic skin reading, not a diagnosis (2026-11-06)
+
+**Problem.** A patient does not know which treatment to look for. A face photo can say "mild
+acne, pigmentation on the cheeks" and link to dermatology clinics. But a face photo is
+biometric *and* health data, and software that diagnoses is a medical device in Korea (MFDS —
+Ministry of Food and Drug Safety, SaMD — Software as a Medical Device).
+
+**Alternatives.**
+- A — vision LLM (Large Language Model) only: quick, fits `AiProvider`, but no CV (Computer Vision) of our own.
+- B — our own model (FastAPI + PyTorch, EfficientNet fine-tuned on ACNE04 / Fitzpatrick17k):
+  real CV, but a second runtime, a GPU (Graphics Processing Unit), non-commercial datasets and
+  skin-tone bias (most dermatology datasets are light skin).
+- **C (chosen)** — MediaPipe Face Landmarker in the browser (one face, light, angle, crop by
+  landmarks; frontend, next step) + a vision LLM behind the same `AiProvider` port. B can later
+  become one more provider without changing the module.
+
+**What was built.**
+- `POST /face-scan` (REST, multipart, patients only) → a `FaceScan`. GraphQL:
+  `getMyFaceScans`, `getFaceScan`, `deleteFaceScan`.
+- The photo is **never stored**: `memoryStorage` → magic-byte check → EXIF (Exchangeable Image
+  File Format) strip → model → gone. Plan said "encrypted file, 30-day TTL (Time To Live)";
+  not storing it at all is simpler and safer (data minimisation) — the patient keeps it on
+  their phone. `faceScanImage` was cut from the collection for this reason.
+- `libs/utils/image.util.ts`: JPEG segment walk (drops APP1 EXIF/XMP, APP13 IPTC, COM) and PNG
+  chunk walk (drops eXIf, tEXt, zTXt, iTXt, tIME), pixels copied as is — no `sharp` package.
+- `AiProvider.analyzeFace` on all three providers; `parseFaceAnalysis` drops unknown codes (a
+  disease name never reaches the database), keeps one finding per concern (most severe), caps at
+  six, returns no findings when the photo has quality issues.
+- `faceScans`: status, findings `{concern, severity, zone}`, qualityIssues, summary encrypted
+  (AES-256-GCM), `suggestedSpecialty` from **rules, not the model**, `aiProvider`. `confidence`
+  cut: an LLM's self-reported number is not calibrated. Delete = soft delete that also empties
+  the reading.
+- Limits: AI consent required; 5 scans per Seoul day (Redis `INCR`, atomic; fails open).
+
+**Interview questions.**
+1. Why is the photo not stored, and what would change if a clinic had to see it?
+2. EXIF holds GPS — why strip it on the server when the browser canvas already re-encodes?
+   (Never trust the client: a direct `curl` skips the browser.)
+3. Why does the model pick from fixed enums instead of writing the condition name?
+4. The REST response was first `...scan` and leaked `memberId` / `__v` — why does GraphQL hide
+   that and REST does not?
+5. How would you measure the model's quality — and its bias across skin tones (Fitzpatrick I–VI)?

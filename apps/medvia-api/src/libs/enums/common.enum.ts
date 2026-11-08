@@ -53,6 +53,8 @@ export enum Messages {
 	AI_CONSENT_REQUIRED = 'Please agree to AI processing first (Settings → AI)!',
 	ASSISTANT_UNAVAILABLE = 'The assistant is not available right now, please try again later!',
 	ASSISTANT_DAILY_LIMIT = 'You have reached today’s limit for the assistant!',
+	FACE_SCAN_DAILY_LIMIT = 'You have reached today’s limit for face scans!',
+	FACE_SCAN_PATIENTS_ONLY = 'Only patients can scan a face photo!',
 	ASSISTANT_SESSION_FULL = 'This conversation is full, please start a new one!',
 	NO_PENDING_HOLD = 'There is no time waiting for your confirmation, or it has expired!',
 	TRANSITION_NOT_ALLOWED = 'This booking cannot be changed this way!',

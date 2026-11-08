@@ -62,6 +62,8 @@ export const envValidationSchema = Joi.object({
 	AI_MODEL_TRANSLATE: Joi.string().allow('').optional(),
 	AI_MODEL_SUMMARY: Joi.string().allow('').optional(),
 	AI_MODEL_ASSISTANT: Joi.string().allow('').optional(),
+	// AI-3 face scan: a model that reads images (anthropic default claude-opus-5-5).
+	AI_MODEL_FACE: Joi.string().allow('').optional(),
 
 	// Added in later milestones; optional for now.
 	GOOGLE_CLIENT_ID: Joi.string().allow('').optional(),

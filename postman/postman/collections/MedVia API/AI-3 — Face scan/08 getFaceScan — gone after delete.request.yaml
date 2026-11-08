@@ -1,0 +1,30 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{faceToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query GetFaceScan($scanId: String!) {
+        getFaceScan(scanId: $scanId) {
+          _id
+        }
+      }
+    variables: |-
+      {
+        "scanId": "{{faceScanId}}"
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+
+      pm.test('refused: No data is found!', () => pm.expect(msg).to.include('No data is found!'));
+    language: text/javascript
+order: 8000
