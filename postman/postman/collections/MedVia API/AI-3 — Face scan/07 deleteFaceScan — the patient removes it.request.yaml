@@ -1,0 +1,32 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{faceToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      mutation DeleteFaceScan($scanId: String!) {
+        deleteFaceScan(scanId: $scanId) {
+          _id
+          faceScanStatus
+        }
+      }
+    variables: |-
+      {
+        "scanId": "{{faceScanId}}"
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('the deleted scan is returned', () => pm.expect((gql.deleteFaceScan || {})._id).to.eql(pm.environment.get('faceScanId')));
+    language: text/javascript
+order: 7000

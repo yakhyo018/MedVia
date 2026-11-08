@@ -1,7 +1,19 @@
 import { createHash } from 'crypto';
 import { Language } from '../../libs/enums/common.enum';
 import { T } from '../../libs/types/common';
-import { PROVIDER_NAMES, ProviderName, TranslationResult } from './ai.types';
+import {
+	ConcernSeverity,
+	FaceZone,
+	PhotoQualityIssue,
+	SkinConcern,
+} from '../../libs/enums/face-scan.enum';
+import {
+	FaceAnalysis,
+	FaceFinding,
+	PROVIDER_NAMES,
+	ProviderName,
+	TranslationResult,
+} from './ai.types';
 
 /**
  * Pure rules of the AI layer: which provider may run where, how a model's reply is checked,
@@ -11,6 +23,8 @@ import { PROVIDER_NAMES, ProviderName, TranslationResult } from './ai.types';
 export const TRANSLATION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const MAX_TRANSLATION = 4000;
 const MAX_SUMMARY = 1500;
+const MAX_FACE_SUMMARY = 800;
+export const MAX_FACE_FINDINGS = 6;
 
 /**
  * The boot-time lock. Free OpenRouter endpoints may log prompts and the fake provider writes
@@ -63,6 +77,41 @@ export function parseSummary(raw: string | T): string {
 	const summary = typeof data?.summaryKo === 'string' ? data.summaryKo.trim() : '';
 	if (!summary || summary.length > MAX_SUMMARY) throw new Error('empty or oversized summary');
 	return summary;
+}
+
+const isOneOf = <E extends Record<string, string>>(e: E, v: unknown): v is E[keyof E] =>
+	typeof v === 'string' && (Object.values(e) as string[]).includes(v);
+
+/**
+ * The face reading is untrusted input like any model reply — and here a wrong value reaches a
+ * patient. Unknown codes are dropped (never stored as free text), one finding per concern is
+ * kept (the most severe), at most six. A photo with quality issues carries no findings: a
+ * reading of a dark or blurred photo would be a guess.
+ */
+export function parseFaceAnalysis(raw: string | T): FaceAnalysis {
+	const data = typeof raw === 'string' ? extractJson(raw) : raw;
+	const summary = typeof data?.summary === 'string' ? data.summary.trim() : '';
+	if (!summary || summary.length > MAX_FACE_SUMMARY) throw new Error('empty or oversized summary');
+
+	const qualityIssues = [
+		...new Set((Array.isArray(data?.qualityIssues) ? data.qualityIssues : []) as unknown[]),
+	].filter((q): q is PhotoQualityIssue => isOneOf(PhotoQualityIssue, q));
+	if (qualityIssues.length) return { qualityIssues, findings: [], summary };
+
+	const rank = Object.values(ConcernSeverity);
+	const byConcern = new Map<SkinConcern, FaceFinding>();
+	for (const f of (Array.isArray(data?.findings) ? data.findings : []) as T[]) {
+		if (!isOneOf(SkinConcern, f?.concern) || !isOneOf(ConcernSeverity, f?.severity)) continue;
+		const finding: FaceFinding = {
+			concern: f.concern,
+			severity: f.severity,
+			zone: isOneOf(FaceZone, f?.zone) ? f.zone : FaceZone.WHOLE_FACE,
+		};
+		const seen = byConcern.get(finding.concern);
+		if (!seen || rank.indexOf(finding.severity) > rank.indexOf(seen.severity))
+			byConcern.set(finding.concern, finding);
+	}
+	return { qualityIssues, findings: [...byConcern.values()].slice(0, MAX_FACE_FINDINGS), summary };
 }
 
 /**

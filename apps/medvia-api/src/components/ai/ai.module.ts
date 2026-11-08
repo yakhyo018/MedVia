@@ -18,6 +18,7 @@ export function createProvider(env: NodeJS.ProcessEnv = process.env): AiProvider
 				translateModel: env.AI_MODEL_TRANSLATE || 'claude-haiku-4-5',
 				summaryModel: env.AI_MODEL_SUMMARY || 'claude-opus-5-5',
 				assistantModel: env.AI_MODEL_ASSISTANT || 'claude-opus-5-5',
+				faceModel: env.AI_MODEL_FACE || 'claude-opus-5-5',
 			});
 		case 'openrouter': {
 			const model = env.AI_MODEL_TRANSLATE;
@@ -28,6 +29,8 @@ export function createProvider(env: NodeJS.ProcessEnv = process.env): AiProvider
 				summaryModel: env.AI_MODEL_SUMMARY || model,
 				// A model with tool calling; the translation model may not have it.
 				assistantModel: env.AI_MODEL_ASSISTANT || model,
+				// No fallback to the translation model: it may not read images at all.
+				faceModel: env.AI_MODEL_FACE,
 			});
 		}
 		default:

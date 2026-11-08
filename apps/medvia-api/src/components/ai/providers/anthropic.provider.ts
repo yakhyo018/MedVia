@@ -1,7 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Language } from '../../../libs/enums/common.enum';
-import { parseSummary, parseTranslation } from '../ai.rules';
+import { parseFaceAnalysis, parseSummary, parseTranslation } from '../ai.rules';
 import {
+	FACE_ANALYSIS_SCHEMA,
+	FACE_SYSTEM,
+	faceUser,
 	SUMMARY_SCHEMA,
 	SUMMARY_SYSTEM,
 	summaryUser,
@@ -15,6 +18,8 @@ import {
 	AgentToolCall,
 	AgentToolSpec,
 	AiProvider,
+	FaceAnalysis,
+	FaceImage,
 	QuestionAnswer,
 	TranslationResult,
 } from '../ai.types';
@@ -32,6 +37,8 @@ export interface AnthropicConfig {
 	translateModel: string;
 	summaryModel: string;
 	assistantModel: string;
+	/** A model that reads images; default claude-opus-5-5. */
+	faceModel?: string;
 	/** Injected so a test can check the requests without a key or a network. */
 	client?: Anthropic;
 }
@@ -138,6 +145,46 @@ export class AnthropicProvider implements AiProvider {
 		const stop =
 			response.stop_reason === 'max_tokens' ? 'max_tokens' : toolCalls.length ? 'tool_use' : 'end';
 		return { text, toolCalls, stop, raw: response.content };
+	}
+
+	/**
+	 * One face photo as a base64 image block, then the instruction — Anthropic recommends the
+	 * image before the text. Structured outputs keep the reply inside FACE_ANALYSIS_SCHEMA; the
+	 * parse still runs (a refusal or a cut-off breaks any schema).
+	 */
+	public async analyzeFace(image: FaceImage, lang: Language): Promise<FaceAnalysis> {
+		const model = this.config.faceModel || 'claude-opus-5-5';
+		const params: Record<string, unknown> = {
+			model,
+			max_tokens: 2048,
+			system: FACE_SYSTEM,
+			messages: [
+				{
+					role: 'user',
+					content: [
+						{
+							type: 'image',
+							source: {
+								type: 'base64',
+								media_type: image.mediaType,
+								data: image.data.toString('base64'),
+							},
+						},
+						{ type: 'text', text: faceUser(lang) },
+					],
+				},
+			],
+			output_config: {
+				format: { type: 'json_schema', schema: FACE_ANALYSIS_SCHEMA },
+				...(model.includes('haiku') ? {} : { effort: 'low' }),
+			},
+		};
+		if (FALLBACK_MODELS.includes(model)) {
+			params.betas = ['server-side-fallback-2026-07-01'];
+			params.fallbacks = 'default';
+		}
+		const response = await this.client.beta.messages.create(params as never);
+		return parseFaceAnalysis(this.textOf(response as unknown as Anthropic.Message));
 	}
 
 	/** The text block — not content[0]: newer models put (empty) thinking blocks first. */

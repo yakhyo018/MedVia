@@ -1,4 +1,10 @@
 import { Language } from '../../libs/enums/common.enum';
+import {
+	ConcernSeverity,
+	FaceZone,
+	PhotoQualityIssue,
+	SkinConcern,
+} from '../../libs/enums/face-scan.enum';
 
 export interface TranslationResult {
 	/** The language the text was actually written in, as the model detected it. */
@@ -9,6 +15,29 @@ export interface TranslationResult {
 export interface QuestionAnswer {
 	question: string;
 	answer: string;
+}
+
+/* ───────────────────────── face scan (AI-3) ───────────────────────── */
+
+/** A photo already checked (type from its bytes) and stripped of EXIF. Never written to disk. */
+export interface FaceImage {
+	data: Buffer;
+	mediaType: 'image/jpeg' | 'image/png';
+}
+
+export interface FaceFinding {
+	concern: SkinConcern;
+	severity: ConcernSeverity;
+	zone: FaceZone;
+}
+
+/** The model's reading of one photo, after parseFaceAnalysis has checked it. */
+export interface FaceAnalysis {
+	/** Non-empty = the photo could not be read; findings is then empty. */
+	qualityIssues: PhotoQualityIssue[];
+	findings: FaceFinding[];
+	/** Two or three sentences for the patient, in the patient's language. Not a diagnosis. */
+	summary: string;
 }
 
 /* ───────────────────────── the assistant (AI-2) ───────────────────────── */
@@ -78,6 +107,8 @@ export interface AiProvider {
 	 * assistant module's, not the provider's.
 	 */
 	converse(system: string, messages: AgentMessage[], tools: AgentToolSpec[]): Promise<AgentStep>;
+	/** Visible cosmetic skin concerns in one face photo, summarised in `lang`. Not a diagnosis. */
+	analyzeFace(image: FaceImage, lang: Language): Promise<FaceAnalysis>;
 }
 
 export type ProviderName = 'fake' | 'openrouter' | 'anthropic';

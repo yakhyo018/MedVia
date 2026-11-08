@@ -1,0 +1,23 @@
+$kind: http-request
+url: '{{baseUrl}}/face-scan'
+method: POST
+headers:
+  Authorization: Bearer {{faceToken}}
+body:
+  type: formdata
+  content:
+    - key: file
+      type: file
+      src: fixtures/face-photo.png
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+
+      pm.test('HTTP 403', () => pm.response.to.have.status(403));
+      pm.test('asks for the AI consent', () => pm.expect(body.message || '').to.include('agree to AI processing'));
+    language: text/javascript
+order: 2000
