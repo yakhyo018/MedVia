@@ -65,6 +65,14 @@ export const envValidationSchema = Joi.object({
 	// AI-3 face scan: a model that reads images (anthropic default claude-opus-5-5).
 	AI_MODEL_FACE: Joi.string().allow('').optional(),
 
+	// MedVia Navi — the RAG service (~/Desktop/medvia-navi). Both empty → askNavi answers
+	// "not available"; the rest of MedVia does not depend on it.
+	NAVI_URL: Joi.string()
+		.uri({ scheme: ['http', 'https'] })
+		.allow('')
+		.optional(),
+	NAVI_API_KEY: Joi.string().allow('').optional(),
+
 	// Added in later milestones; optional for now.
 	GOOGLE_CLIENT_ID: Joi.string().allow('').optional(),
 }).unknown(true);

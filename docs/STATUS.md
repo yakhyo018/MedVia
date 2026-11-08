@@ -7,6 +7,15 @@ _Last updated: 2026-10-15 — every planned backend milestone is done; frontend 
 Now the production release (frontend F9): `feature/seed-variety` (below) is ready, then a
 `DEMO_MODE` for production, Docker Compose files and the server (`medvia.tech`)._
 
+## N1 MedVia Navi through the API (2026-11-08, branch `feature/navi`)
+
+- `askNavi(input: { question })` for any signed-in member → the answer, `refused`, the sources with
+  their page on the site, and a disclaimer. 10 questions a minute (Redis, fail open), 15 s timeout.
+- `.env`: `NAVI_URL`, `NAVI_API_KEY` (= the key in `medvia-navi/.env`). Empty → "not available".
+- Checked: Jest 274, typecheck, lint, build; Postman `N1 — Navi` 3/3 with Navi running.
+- Next: the "Ask MedVia Navi" card on the site's `/cs` page; then the nightly sync
+  (`medvia-batch` → `POST /v1/documents`) — until then Navi's index comes from its own export script.
+
 ## AI-3 Face scan (2026-11-06, branch `feature/face-scan`, not merged)
 
 - Approach C (the user's choice): MediaPipe in the browser (frontend, not built yet) + a vision

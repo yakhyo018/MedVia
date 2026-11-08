@@ -1,0 +1,3 @@
+$kind: collection
+description: "MedVia Navi through the MedVia API: askNavi passes the question to the Navi service (~/Desktop/medvia-navi) with the server-side key and returns the answer, whether it refused, and the sources with their page on the site. Needs NAVI_URL and NAVI_API_KEY in .env and Navi running (navi-api); when Navi is not running the answer tests are skipped, not failed."
+order: 17000

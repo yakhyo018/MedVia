@@ -2697,3 +2697,39 @@ Ministry of Food and Drug Safety, SaMD — Software as a Medical Device).
 4. The REST response was first `...scan` and leaked `memberId` / `__v` — why does GraphQL hide
    that and REST does not?
 5. How would you measure the model's quality — and its bias across skin tones (Fitzpatrick I–VI)?
+
+## N1 — MedVia Navi through the API: `askNavi` (2026-11-08)
+
+**Problem.** Navi (the RAG service in `~/Desktop/medvia-navi`) answers questions from MedVia's own
+content with sources. The site needs it, but Navi's API key must never reach a browser, and a slow
+or stopped Navi must not take anything else in MedVia down with it.
+
+**Alternatives.**
+- The browser calls Navi directly: the key would be in the page source — anyone could use Navi
+  as a free model, and the per-member limit would be impossible (Navi knows no members).
+- A REST proxy route: works, but the site speaks GraphQL everywhere else.
+- **Chosen:** a GraphQL query `askNavi` in a small `navi` module. MedVia holds the key, checks the
+  member, limits the rate, calls Navi with a timeout and turns Navi's sources into site links.
+
+**Code.**
+- `navi.service.ts`: `fetch` with `AbortSignal.timeout(15 s)`; any failure (unreachable, 401 from
+  a wrong key, 5xx) → one `ServiceUnavailableException("not available")`, the log says which.
+- 10 questions per member per minute: `INCR navi:ask:<memberId>:<minute>`, TTL 120 s, fail open.
+- `navi.rules.ts` (pure, Jest): `parseDocId` and `sourceUrl` — `clinic-<id>` → clinic page,
+  `treatment-<id>` → its clinic's page (one `$in` query for every treatment among the sources),
+  `tip-<id>` → the article, `faq` → `/cs`, `notice-<id>` → the notice, guides → no link.
+- `NAVI_URL` / `NAVI_API_KEY` both empty → "not available"; MedVia starts without Navi.
+- Postman `N1 — Navi` (3 requests): when Navi is not running the answer tests are **skipped**
+  (`pm.test.skip`), so `npm run test:api` stays green on a machine without Navi.
+
+**Interview questions.**
+1. **Why does the browser not call the RAG service directly?** The API key would be public, and
+   only MedVia knows who the member is — the rate limit and the login need it.
+2. **What happens when Navi is down?** `askNavi` returns "not available" within the 15-second
+   timeout; nothing else calls Navi, so bookings, chat and search are unaffected.
+3. **Why is `askNavi` a Query, not a Mutation?** It changes nothing the client can see; the rate
+   counter is an implementation detail, like a cache.
+4. **Why does MedVia build the source links, not Navi?** Navi knows documents, MedVia knows its
+   own pages — and a treatment's page depends on MedVia's data (its clinic).
+5. **How would you make this survive a Navi outage better?** Cache frequent answers in Redis by a
+   hash of the question (with a TTL), or fall back to a keyword FAQ search.
