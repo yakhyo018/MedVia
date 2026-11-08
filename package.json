@@ -26,6 +26,7 @@
 		"photos:generate": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/generate-photos.ts",
 		"clean:test": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/clean-test.ts",
 		"eval:translate": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/eval-translate.ts",
+		"navi:sync": "ts-node -P apps/medvia-batch/tsconfig.app.json apps/medvia-batch/src/scripts/navi-sync.ts",
 		"eval:assistant": "ts-node -P apps/medvia-api/tsconfig.app.json apps/medvia-api/src/scripts/eval-assistant.ts"
 	},
 	"dependencies": {

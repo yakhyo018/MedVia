@@ -22,6 +22,7 @@ import AccessLogSchema from '../../schemas/AccessLog.model';
 import InquirySchema from '../../schemas/Inquiry.model';
 import SessionSchema from '../../schemas/Session.model';
 import AssistantSessionSchema from '../../schemas/AssistantSession.model';
+import FaceScanSchema from '../../schemas/FaceScan.model';
 import AuditLogSchema from '../../schemas/AuditLog.model';
 import BatchLogSchema from '../../schemas/BatchLog.model';
 import { T } from '../../libs/types/common';
@@ -57,6 +58,7 @@ export function models(): Models {
 		Inquiry: def('Inquiry', InquirySchema),
 		Session: def('Session', SessionSchema),
 		AssistantSession: def('AssistantSession', AssistantSessionSchema),
+		FaceScan: def('FaceScan', FaceScanSchema),
 		AuditLog: def('AuditLog', AuditLogSchema),
 		BatchLog: def('BatchLog', BatchLogSchema),
 	};
@@ -140,6 +142,7 @@ export async function planAccountRemoval(m: Models, domain: string): Promise<Rem
 		['Inquiry', { memberId: { $in: memberIds } }],
 		['Session', { memberId: { $in: memberIds } }],
 		['AssistantSession', { memberId: { $in: memberIds } }],
+		['FaceScan', { memberId: { $in: memberIds } }],
 		['AuditLog', { $or: [{ auditRefId: { $in: auditRefIds } }, { memberId: { $in: memberIds } }] }],
 		// Parents last: a crash halfway leaves orphans of children, never children of the dead.
 		['Booking', { _id: { $in: bookingIds } }],

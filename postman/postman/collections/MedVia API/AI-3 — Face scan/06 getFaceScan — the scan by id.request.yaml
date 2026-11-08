@@ -1,0 +1,41 @@
+$kind: http-request
+url: '{{baseUrl}}/graphql'
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{faceToken}}
+body:
+  type: graphql
+  content:
+    query: |-
+      query GetFaceScan($scanId: String!) {
+        getFaceScan(scanId: $scanId) {
+          _id
+          faceScanStatus
+          findings { concern severity zone }
+          qualityIssues
+          faceScanSummary
+          faceScanLang
+          suggestedSpecialty
+          aiProvider
+          disclaimer
+          createdAt
+        }
+      }
+    variables: |-
+      {
+        "scanId": "{{faceScanId}}"
+      }
+scripts:
+  - type: afterResponse
+    code: |-
+      const body = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();
+      const gql = body.data || {};
+      const err = (body.errors && body.errors[0]) || {};
+      const msg = err.message || '';
+
+      const s = gql.getFaceScan || {};
+      pm.test('no GraphQL errors', () => pm.expect(body.errors, msg).to.be.undefined);
+      pm.test('the summary is decrypted for its owner', () => pm.expect(s.faceScanSummary || '').to.include('acne'));
+    language: text/javascript
+order: 6000

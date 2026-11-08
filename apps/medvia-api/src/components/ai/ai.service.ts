@@ -8,6 +8,8 @@ import type {
 	AgentStep,
 	AgentToolSpec,
 	AiProvider,
+	FaceAnalysis,
+	FaceImage,
 	QuestionAnswer,
 	TranslationResult,
 } from './ai.types';
@@ -69,6 +71,16 @@ export class AiService {
 			return await this.provider.converse(system, messages, tools);
 		} catch (err: any) {
 			this.logger.warn(`${this.provider.name} converse failed: ${err.message}`);
+			return null;
+		}
+	}
+
+	/** Not cached: a photo is never sent twice, and its hash would identify a face. */
+	public async analyzeFace(image: FaceImage, lang: Language): Promise<FaceAnalysis | null> {
+		try {
+			return await this.provider.analyzeFace(image, lang);
+		} catch (err: any) {
+			this.logger.warn(`${this.provider.name} analyzeFace failed: ${err.message}`);
 			return null;
 		}
 	}

@@ -7,6 +7,41 @@ _Last updated: 2026-10-15 — every planned backend milestone is done; frontend 
 Now the production release (frontend F9): `feature/seed-variety` (below) is ready, then a
 `DEMO_MODE` for production, Docker Compose files and the server (`medvia.tech`)._
 
+## N2 Navi sync from medvia-batch (2026-11-08, branch `feature/navi`)
+
+- Batch `NAVI_SYNC` (03:30 Seoul, after RANK) + `npm run navi:sync`: live clinics, treatments,
+  HEALTH_TIP articles, FAQ and NOTICE → Navi `POST /v1/documents` (200 per call); no longer live →
+  `DELETE /v1/documents/{id}` (404 = fine; `guide-*` never touched). Keys empty → skipped; Navi
+  down → FAILED in batchLogs, the batch keeps running.
+- Markdown equals `medvia-navi/scripts/export_medvia.py` byte for byte (diffed: 55/55, meta too);
+  that script is no longer needed for MedVia content.
+- Checked: Jest 285, typecheck, lint, build; `navi:sync` against the running Navi → unchanged 55;
+  a temporary FAQ → indexed 1 → deleted 1 → back to 55 unchanged. No new GraphQL API → no Postman.
+- `getBatchStatus` now returns a `NAVI_SYNC` row; MedVia-next (`feature/navi`) labels it
+  "MedVia Navi index sync · Daily 03:30" in five languages. Open: Navi has no list endpoint, so deletion sends a DELETE for
+  every non-live id each night (a few dozen today).
+
+## N1 MedVia Navi through the API (2026-11-08, branch `feature/navi`)
+
+- `askNavi(input: { question })` for any signed-in member → the answer, `refused`, the sources with
+  their page on the site, and a disclaimer. 10 questions a minute (Redis, fail open), 15 s timeout.
+- `.env`: `NAVI_URL`, `NAVI_API_KEY` (= the key in `medvia-navi/.env`). Empty → "not available".
+- Checked: Jest 274, typecheck, lint, build; Postman `N1 — Navi` 3/3 with Navi running.
+- Next: the "Ask MedVia Navi" card on the site's `/cs` page. The nightly sync is N2 (above).
+
+## AI-3 Face scan (2026-11-06, branch `feature/face-scan`, not merged)
+
+- Approach C (the user's choice): MediaPipe in the browser (frontend, not built yet) + a vision
+  model behind `AiProvider.analyzeFace`. Cosmetic reading only, never a diagnosis.
+- `POST /face-scan` + `getMyFaceScans` / `getFaceScan` / `deleteFaceScan`; collection
+  `faceScans`. The photo is never stored (cut `faceScanImage`); `confidence` cut.
+- Checked: Jest 269, typecheck, lint, build; local API with the fake provider (consent 403,
+  happy path, blurry, renamed PHP 400, list, delete, 6th scan refused; summary stored encrypted;
+  `clean:test` removes FaceScan). Postman `AI-3 — Face scan` (8 requests, 20 assertions) passes
+  with a new valid fixture `postman/fixtures/face-photo.png` — `clinic-photo.png` is a PNG
+  without the IDAT CRC: `/upload` accepts it (magic bytes only), the face scan's chunk parser
+  rightly refuses it. Not yet: a real vision model, the frontend.
+
 ## Deploy files (2026-10-16)
 
 - `deploy/` removed by the user. Now `docker-compose.yml` (production, nestar style: Redis, API,

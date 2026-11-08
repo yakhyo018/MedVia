@@ -1,4 +1,10 @@
 import { Language } from '../../../libs/enums/common.enum';
+import {
+	ConcernSeverity,
+	FaceZone,
+	PhotoQualityIssue,
+	SkinConcern,
+} from '../../../libs/enums/face-scan.enum';
 import { T } from '../../../libs/types/common';
 import {
 	AgentMessage,
@@ -7,6 +13,8 @@ import {
 	AgentToolResult,
 	AgentToolSpec,
 	AiProvider,
+	FaceAnalysis,
+	FaceImage,
 	QuestionAnswer,
 	TranslationResult,
 } from '../ai.types';
@@ -19,6 +27,11 @@ export const FAKE_BAD_ARGS_MARKER = '#bad-args';
 export const FAKE_LOOP_MARKER = '#loop';
 /** The assistant tries to hold a slot it was never shown (propose_hold's own checks). */
 export const FAKE_FORGED_SLOT_MARKER = '#forged-slot';
+/**
+ * Face scan: these bytes anywhere in the image pick the path. They must sit in a segment the
+ * EXIF strip keeps (APP0 / APP2), or they are gone before the provider sees them.
+ */
+export const FAKE_BLURRY_MARKER = '#blurry';
 
 /**
  * Deterministic and free, for Jest, Postman and local work without a key: "[KO] text".
@@ -81,6 +94,30 @@ export class FakeProvider implements AiProvider {
 		}
 		if (last.role === 'tool') return afterTool(last.results[0], call, say);
 		return say('How can I help?');
+	}
+
+	/** Two fixed findings; a quality issue or a failure when the image carries a marker. */
+	public async analyzeFace(image: FaceImage, lang: Language): Promise<FaceAnalysis> {
+		if (image.data.includes(FAKE_FAIL_MARKER)) throw new Error('fake provider failure');
+		if (image.data.includes(FAKE_BLURRY_MARKER)) {
+			return {
+				qualityIssues: [PhotoQualityIssue.BLURRY],
+				findings: [],
+				summary: `[fake ${lang}] The photo is blurry. Please take it again in daylight.`,
+			};
+		}
+		return {
+			qualityIssues: [],
+			findings: [
+				{ concern: SkinConcern.ACNE, severity: ConcernSeverity.MILD, zone: FaceZone.CHEEKS },
+				{
+					concern: SkinConcern.PIGMENTATION,
+					severity: ConcernSeverity.MODERATE,
+					zone: FaceZone.CHEEKS,
+				},
+			],
+			summary: `[fake ${lang}] Mild acne and some pigmentation on the cheeks. A clinic consultation confirms it.`,
+		};
 	}
 }
 

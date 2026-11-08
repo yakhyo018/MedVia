@@ -18,6 +18,7 @@ import { MemberType } from '../../libs/enums/member.enum';
 import type { AuthMember as AuthMemberType } from '../../libs/types/common';
 import { AuthMember } from '../auth/decorators/authMember.decorator';
 import { AuthGuard } from '../auth/guards/auth.guard';
+import { detectImageType } from '../../libs/utils/image.util';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
@@ -40,18 +41,6 @@ interface UploadedImage {
 	size: number;
 	buffer: Buffer;
 }
-
-/**
- * The extension comes from the file's first bytes, not from its name or the Content-Type
- * header — both are whatever the client claims. A script renamed to photo.jpg fails here.
- */
-const detectImageType = (buffer: Buffer): 'jpg' | 'png' | null => {
-	if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff)
-		return 'jpg';
-	const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-	if (buffer.length >= 8 && png.every((byte, i) => buffer[i] === byte)) return 'png';
-	return null;
-};
 
 /**
  * Images go through REST, not GraphQL. graphql-upload pulls in `dicer`,
