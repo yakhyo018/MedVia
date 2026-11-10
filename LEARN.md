@@ -2698,6 +2698,16 @@ Ministry of Food and Drug Safety, SaMD — Software as a Medical Device).
    that and REST does not?
 5. How would you measure the model's quality — and its bias across skin tones (Fitzpatrick I–VI)?
 
+**Fix (2026-11-10): empty replies in production.** Every scan on the server ended FAILED with
+`openrouter returned no content`. The free face model (`nvidia/nemotron-3.5-super-vl:free`) is a
+*reasoning* model: its hidden thinking counts against `max_tokens`, and at 1024 it used 300–525
+tokens on a blank test image alone, so a real face most likely left nothing for the JSON reply. The face call now
+gets `FACE_MAX_TOKENS = 4096`, and an empty reply names its `finish_reason` (`length` = budget ran
+out, `content_filter` = refused) so the log says why instead of only that it failed.
+6. A reasoning model returns `200 OK` with empty content — what happened, and what do you log?
+   (The token budget went to hidden reasoning: `finish_reason=length`. Log the reason, never the
+   body — it can echo patient text.)
+
 ## N1 — MedVia Navi through the API: `askNavi` (2026-11-08)
 
 **Problem.** Navi (the RAG service in `~/Desktop/medvia-navi`) answers questions from MedVia's own
