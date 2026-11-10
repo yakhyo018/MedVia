@@ -25,6 +25,12 @@ const TIMEOUT_MS = 20_000;
 /** A tool loop step can be slower than a translation: more context, a longer answer. */
 const CONVERSE_TIMEOUT_MS = 45_000;
 const RETRY_STATUSES = [429, 502, 503];
+/**
+ * The face model reasons before it answers, and the hidden reasoning counts against max_tokens.
+ * At 1024 production scans came back empty — most likely the budget went to reasoning (measured
+ * on nemotron-3.5-super-vl: 300–525 reasoning tokens on a blank test image alone).
+ */
+export const FACE_MAX_TOKENS = 4096;
 /** Overridable so the tests do not wait. */
 export const RETRY_DELAYS_MS = [2_000, 5_000];
 const MAX_RETRY_WAIT_MS = 10_000;
@@ -138,7 +144,7 @@ export class OpenRouterProvider implements AiProvider {
 			JSON.stringify({
 				model: this.config.faceModel,
 				temperature: 0,
-				max_tokens: 1024,
+				max_tokens: FACE_MAX_TOKENS,
 				messages: [
 					{ role: 'system', content: FACE_SYSTEM },
 					{
@@ -153,10 +159,7 @@ export class OpenRouterProvider implements AiProvider {
 			CONVERSE_TIMEOUT_MS,
 		);
 		if (!res.ok) throw new Error(`openrouter responded ${res.status}`);
-		const body: any = await res.json();
-		const content = body?.choices?.[0]?.message?.content;
-		if (typeof content !== 'string' || !content) throw new Error('openrouter returned no content');
-		return parseFaceAnalysis(content);
+		return parseFaceAnalysis(replyText(await res.json()));
 	}
 
 	/**
@@ -202,11 +205,24 @@ export class OpenRouterProvider implements AiProvider {
 		);
 		// The status only — the body may echo the prompt, and the prompt is patient text.
 		if (!res.ok) throw new Error(`openrouter responded ${res.status}`);
-		const body: any = await res.json();
-		const content = body?.choices?.[0]?.message?.content;
-		if (typeof content !== 'string' || !content) throw new Error('openrouter returned no content');
-		return content;
+		return replyText(await res.json());
 	}
+}
+
+/**
+ * The reply's text, or an error that says why there is none. `finish_reason` is safe to log (no
+ * patient text) and tells the cases apart: `length` = the token budget ran out, often on a
+ * reasoning model's hidden thinking; `content_filter` = the provider refused.
+ */
+export function replyText(body: any): string {
+	const choice = body?.choices?.[0];
+	const content = choice?.message?.content;
+	if (typeof content !== 'string' || !content) {
+		throw new Error(
+			`openrouter returned no content (finish_reason=${choice?.finish_reason ?? 'none'})`,
+		);
+	}
+	return content;
 }
 
 /** MedVia's conversation → OpenAI's messages: tool results become one `tool` message each. */
