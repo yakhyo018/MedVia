@@ -3,7 +3,7 @@ import { Language } from '../../../libs/enums/common.enum';
 import { FAKE_BLURRY_MARKER } from './fake.provider';
 import { AnthropicProvider } from './anthropic.provider';
 import { FAKE_FAIL_MARKER, FakeProvider } from './fake.provider';
-import { OpenRouterProvider, RETRY_DELAYS_MS } from './openrouter.provider';
+import { FACE_MAX_TOKENS, OpenRouterProvider, RETRY_DELAYS_MS } from './openrouter.provider';
 
 /** A Messages API reply as the SDK returns it: an empty thinking block first, then the text. */
 const reply = (text: string, stop_reason = 'end_turn') => ({
@@ -460,6 +460,26 @@ describe('analyzeFace (AI-3)', () => {
 		await provider.analyzeFace(image, Language.UZ);
 		expect(sent.model).toBe('free/vision');
 		expect(sent.messages[1].content[0].image_url.url).toMatch(/^data:image\/jpeg;base64,/);
+		// Room for a reasoning model's hidden thinking plus the JSON reply.
+		expect(sent.max_tokens).toBe(FACE_MAX_TOKENS);
+	});
+
+	it('OpenRouter: an empty reply names its finish_reason, so the log says why', async () => {
+		const fetchFn = (async () => ({
+			ok: true,
+			json: async () => ({ choices: [{ finish_reason: 'length', message: { content: null } }] }),
+		})) as unknown as typeof fetch;
+		const provider = new OpenRouterProvider({
+			apiKey: 'k',
+			translateModel: 'm',
+			summaryModel: 'm',
+			assistantModel: 'm',
+			faceModel: 'free/vision',
+			fetchFn,
+		});
+		await expect(provider.analyzeFace(image, Language.EN)).rejects.toThrow(
+			'openrouter returned no content (finish_reason=length)',
+		);
 	});
 
 	it('OpenRouter without AI_MODEL_FACE fails instead of sending a photo to a text model', async () => {
