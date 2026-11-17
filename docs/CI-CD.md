@@ -81,3 +81,6 @@ Settings → Branches → Add rule for `main` → Require status checks to pass 
 - A deploy recreates the containers, which install and build inside: the API is down ~1–2 min, the
   site ~3 min. Building images in CI and shipping them would cut this to seconds — the next step.
 - Manual deploy still works: `cd /home/MedVia-project/MedVia && ./deploy.sh`.
+- MedVia Navi (`/home/MedVia-project/medvia-navi`, its own `docker-compose.prod.yml`) is not
+  deployed by CI: `ci-deploy.sh` knows only `api` and `web`. Update it by hand with its
+  `./deploy.sh`; a MedVia deploy recreates only `medvia-api` / `medvia-batch` and leaves Navi running.

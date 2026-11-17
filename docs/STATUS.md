@@ -7,6 +7,19 @@ _Last updated: 2026-10-15 — every planned backend milestone is done; frontend 
 Now the production release (frontend F9): `feature/seed-variety` (below) is ready, then a
 `DEMO_MODE` for production, Docker Compose files and the server (`medvia.tech`)._
 
+## Navi in production (2026-11-17, branch `feature/navi-deploy`, docs only)
+
+- Navi runs beside MedVia on the server: `medvia-navi` (Qwen2.5-0.5B + LoRA, bfloat16 on the CPU,
+  3 GB cap, ~6 s per generated answer) + `medvia-navi-qdrant`, from
+  `/home/MedVia-project/medvia-navi` (`docker-compose.prod.yml`, joins `medvia_monorepo-network`,
+  no published port). Details in medvia-navi's `docs/STATUS.md` and README → Deploy.
+- Production `.env`: `NAVI_URL=http://medvia-navi:8100` + the key of `medvia-navi/.env`; API and
+  batch recreated. First `npm run navi:sync` in medvia-batch: 55 documents indexed; + 7 guides.
+- Checked from the API container: 401 without the key, an English question answered with its
+  source; port 8100 closed from outside. Free-form RU / UZ questions are refused (score < 0.80,
+  Navi's known weakness). Not yet: `askNavi` clicked through on medvia.tech `/cs` by the user.
+- Navi is not in CI/CD: updated by hand with its `./deploy.sh` (docs/CI-CD.md).
+
 ## N2 Navi sync from medvia-batch (2026-11-08, branch `feature/navi`)
 
 - Batch `NAVI_SYNC` (03:30 Seoul, after RANK) + `npm run navi:sync`: live clinics, treatments,
