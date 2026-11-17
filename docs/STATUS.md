@@ -17,7 +17,8 @@ Now the production release (frontend F9): `feature/seed-variety` (below) is read
   batch recreated. First `npm run navi:sync` in medvia-batch: 55 documents indexed; + 7 guides.
 - Checked from the API container: 401 without the key, an English question answered with its
   source; port 8100 closed from outside. Free-form RU / UZ questions are refused (score < 0.80,
-  Navi's known weakness). Not yet: `askNavi` clicked through on medvia.tech `/cs` by the user.
+  Navi's known weakness). Live: the user asked "How do I cancel a booking?" on medvia.tech `/cs`
+  (2026-11-17) → answer + 4 sources.
 - Navi is not in CI/CD: updated by hand with its `./deploy.sh` (docs/CI-CD.md).
 
 ## N2 Navi sync from medvia-batch (2026-11-08, branch `feature/navi`)
